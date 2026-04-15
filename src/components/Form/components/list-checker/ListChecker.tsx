@@ -3,6 +3,7 @@ import List from "./List"
 import type { EquipmentTypes, ListItemData } from "./listCheckerProps"
 import { SAMPLE_OBJECT_ARRAY } from "./testData"
 import { useCallback, useState } from "react"
+import { DEFAULT_BACKGROUND_COLOR } from '../../../../mainStyleConst'
 
 const typeOrder: Record<EquipmentTypes, number> = {
   speaker: 0,
@@ -22,6 +23,8 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: 3,
+    background: DEFAULT_BACKGROUND_COLOR,
+    padding: '16px 0',
   },
   heading: {
     textTransform: 'uppercase',
