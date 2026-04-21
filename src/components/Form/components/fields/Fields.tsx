@@ -2,7 +2,6 @@ import { Box, FormControlLabel, Switch, Typography } from '@mui/material'
 import { styles } from '../formStyles'
 import Field from './Field'
 import { useInvoiceBuilder } from '../../../../context/useInvoiceBuilder'
-import { EquipmentTypes } from '../list-checker/listCheckerProps'
 import type { InvoiceFormValues } from '../../../../context/invoiceBuilderConfig'
 
 type FieldConfig = {
@@ -34,29 +33,17 @@ const fieldConfig: FieldConfig[] = [
     label: 'Package 01 Total',
     type: 'number',
   },
-  {
-    name: 'ledWallPrice',
-    label: 'LED Wall Price',
-    type: 'number',
-  },
 ]
 
 const Fields = ({ errors }: FieldsProps) => {
   const { formValues, handleFieldChange, handleCheckClick, sections } =
     useInvoiceBuilder()
-  const hasLedWallSelection = sections
-    .find((section) => section.id === 7)
-    ?.equipment.some((item) => item.type === EquipmentTypes.LED_WALL && item.isChecked)
   const orFeeItem = sections.find((section) => section.id === 8)?.equipment[0]
   const transpoFeeItem = sections.find((section) => section.id === 9)?.equipment[0]
 
-  const visibleFieldConfig = fieldConfig.filter(
-    (field) => field.name !== 'ledWallPrice' || hasLedWallSelection,
-  )
-
   return (
     <Box sx={styles.root}>
-      {visibleFieldConfig.map((field) => (
+      {fieldConfig.map((field) => (
         <Field
           key={field.name}
           name={field.name}

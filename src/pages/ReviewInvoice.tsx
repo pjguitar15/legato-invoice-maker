@@ -80,6 +80,16 @@ const parseAmount = (value: string) => {
 const roundUpToNearestFiveHundred = (value: number) =>
   Math.ceil(value / 500) * 500
 
+const sanitizeFilenamePart = (value: string, fallback: string) => {
+  const sanitized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return sanitized || fallback
+}
+
 type SummaryRow = {
   no: string
   title: string
@@ -514,8 +524,8 @@ const buildTableBlocks = (rows: TableRow[][]): DocumentBlock[] =>
   rows.map((pageRows, index) => ({
     id: `summary-table-${index + 1}`,
     node: <SummaryTableBlock rows={pageRows} />,
-    gapAfter: 0,
-    pageBreakAfter: true,
+    gapAfter: index === rows.length - 1 ? 20 : 0,
+    pageBreakAfter: index < rows.length - 1,
   }))
 
 const buildDocumentBlocks = ({
@@ -890,7 +900,15 @@ const ReviewInvoice = () => {
         )
       }
 
-      pdf.save(`invoice-${invoiceNumber || 'draft'}.pdf`)
+      const preparedForPart = sanitizeFilenamePart(
+        formValues.clientName,
+        'client',
+      )
+      const exportDatePart = preparedDate.replaceAll('-', '')
+
+      pdf.save(
+        `legato-sounds-and-lights-invoice-${preparedForPart}-${invoiceNumber || 'draft'}-${exportDatePart}.pdf`,
+      )
     } finally {
       setIsExporting(false)
     }
