@@ -1,4 +1,4 @@
-import { EquipmentTypes, type LabelAndEquipmentProps } from "./listCheckerProps";
+import { EquipmentTypes, type LabelAndEquipmentProps } from './listCheckerProps'
 
 export const SAMPLE_OBJECT_ARRAY: LabelAndEquipmentProps[] = [
   {
@@ -7,7 +7,7 @@ export const SAMPLE_OBJECT_ARRAY: LabelAndEquipmentProps[] = [
     equipment: [
       {
         id: 1,
-        isChecked: true,
+        isChecked: false,
         type: EquipmentTypes.SPEAKER,
         name: 'RCF ART 745A',
       },
@@ -19,7 +19,7 @@ export const SAMPLE_OBJECT_ARRAY: LabelAndEquipmentProps[] = [
       },
       {
         id: 3,
-        isChecked: true,
+        isChecked: false,
         type: EquipmentTypes.SPEAKER,
         name: 'QSC K12',
       },
@@ -77,6 +77,36 @@ export const SAMPLE_OBJECT_ARRAY: LabelAndEquipmentProps[] = [
         type: EquipmentTypes.ACCESSORY,
         name: 'Allen & Heath AR2412 Snake Box',
       },
+      {
+        id: 107,
+        isChecked: false,
+        type: EquipmentTypes.ACCESSORY,
+        name: '2 Speaker Stands',
+      },
+      {
+        id: 108,
+        isChecked: false,
+        type: EquipmentTypes.ACCESSORY,
+        name: 'XLR Cables',
+      },
+      {
+        id: 109,
+        isChecked: false,
+        type: EquipmentTypes.ACCESSORY,
+        name: '2 Cable Ramps',
+      },
+      {
+        id: 110,
+        isChecked: false,
+        type: EquipmentTypes.ACCESSORY,
+        name: 'Extension Cables',
+      },
+      {
+        id: 111,
+        isChecked: false,
+        type: EquipmentTypes.ACCESSORY,
+        name: '3.5mm Aux Cable',
+      },
     ],
   },
 
@@ -114,6 +144,12 @@ export const SAMPLE_OBJECT_ARRAY: LabelAndEquipmentProps[] = [
         type: EquipmentTypes.LIGHT,
         name: '512 DMX Light Controller',
       },
+      {
+        id: 205,
+        isChecked: false,
+        type: EquipmentTypes.ACCESSORY,
+        name: '2 T-Bar Stands',
+      },
     ],
   },
   {
@@ -149,6 +185,18 @@ export const SAMPLE_OBJECT_ARRAY: LabelAndEquipmentProps[] = [
         isChecked: false,
         type: EquipmentTypes.MICROPHONE,
         name: 'Shure Drum Mic Set (BETA52A, SM57, PG56, PGA81)',
+      },
+      {
+        id: 303,
+        isChecked: false,
+        type: EquipmentTypes.ACCESSORY,
+        name: '1 Mic Stand',
+      },
+      {
+        id: 304,
+        isChecked: false,
+        type: EquipmentTypes.ACCESSORY,
+        name: '1 Lyric Stand',
       },
     ],
   },

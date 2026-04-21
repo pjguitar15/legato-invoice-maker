@@ -2,7 +2,7 @@ import { Box, Typography } from "@mui/material"
 import List from "./List"
 import type { ListItemData } from "./listCheckerProps"
 import { styles } from '../formStyles'
-import { useInvoiceBuilder } from "../../../../context/InvoiceBuilderContext"
+import { useInvoiceBuilder } from "../../../../context/useInvoiceBuilder"
 
 
 const ListChecker = () => {

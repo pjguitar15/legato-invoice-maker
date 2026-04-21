@@ -1,16 +1,27 @@
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Button, Divider, Typography } from '@mui/material'
-import { Link as RouterLink } from 'react-router'
+import { Link as RouterLink, Navigate, useParams } from 'react-router'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import { DEFAULT_BACKGROUND_COLOR } from '../mainStyleConst'
 import legatoLogo from '../assets/legato-black.png'
-import { useInvoiceBuilder } from '../context/InvoiceBuilderContext'
+import {
+  CUSTOM_PACKAGE_ID,
+  createRandomInvoiceNumber,
+  getPackageTemplate,
+} from '../context/invoiceBuilderConfig'
+import { useInvoiceBuilder } from '../context/useInvoiceBuilder'
 import { formatCurrency, formatDisplayDate } from '../utils/invoiceFormatting'
 
 const A4_WIDTH_PX = 794
 const PDF_PAGE_MARGIN_MM = 10
 const packageSectionIds = [1, 2, 3]
+const DEFAULT_PREPARED_BY = 'Philson S. Josol'
+const signatureAssetModules = import.meta.glob('../assets/philson-signature.png', {
+  eager: true,
+  import: 'default',
+}) as Record<string, string>
+const philsonSignature = Object.values(signatureAssetModules)[0]
 
 const terms = [
   {
@@ -60,18 +71,22 @@ type SummaryRow = {
 
 type DocumentContentProps = {
   formValues: ReturnType<typeof useInvoiceBuilder>['formValues']
+  invoiceNumber: string
   packageSections: Array<
     ReturnType<typeof useInvoiceBuilder>['sections'][number] & {
       equipment: ReturnType<typeof useInvoiceBuilder>['sections'][number]['equipment']
     }
   >
+  preparedDate: string
   summaryRows: SummaryRow[]
   grandTotal: number
 }
 
-const QuotationDocumentContent = ({
+const InvoiceDocumentContent = ({
   formValues,
+  invoiceNumber,
   packageSections,
+  preparedDate,
   summaryRows,
   grandTotal,
 }: DocumentContentProps) => (
@@ -130,7 +145,7 @@ const QuotationDocumentContent = ({
           color: '#464854',
         }}
       >
-        Quotation
+        Invoice
       </Typography>
       <Typography
         sx={{
@@ -140,8 +155,8 @@ const QuotationDocumentContent = ({
           color: '#b3afb1',
           fontWeight: 700,
         }}
-      >
-        QUOTE #{formValues.invoiceNumber || '----'}
+        >
+        INVOICE #{invoiceNumber || '----'}
       </Typography>
     </Box>
 
@@ -157,9 +172,6 @@ const QuotationDocumentContent = ({
         <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#47506a' }}>
           PREPARED FOR {formValues.clientName || ' '}
         </Typography>
-        <Typography sx={{ fontSize: 13, marginTop: '0.35rem', color: '#636b79' }}>
-          Prepared by: {formValues.preparedBy || ' '}
-        </Typography>
         <Typography sx={{ fontSize: 14, marginTop: '2rem' }}>
           Event Venue:{' '}
           <Box component='span' sx={{ fontWeight: 500 }}>
@@ -172,7 +184,7 @@ const QuotationDocumentContent = ({
           PREPARED DATE
         </Typography>
         <Typography sx={{ fontSize: 14, marginBottom: '0.8rem' }}>
-          {formatDisplayDate(formValues.preparedDate)}
+          {formatDisplayDate(preparedDate)}
         </Typography>
         <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#47506a' }}>
           EVENT DATE
@@ -337,15 +349,32 @@ const QuotationDocumentContent = ({
             alignItems: 'center',
             justifyContent: 'center',
             borderBottom: '1px solid #6c7487',
-            color: '#8a92a2',
-            fontSize: 14,
-            letterSpacing: '0.06em',
           }}
         >
-          SIGNATURE HERE
+          {philsonSignature ? (
+            <img
+              src={philsonSignature}
+              alt='Philson signature'
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain',
+              }}
+            />
+          ) : (
+            <Box
+              sx={{
+                color: '#8a92a2',
+                fontSize: 14,
+                letterSpacing: '0.06em',
+              }}
+            >
+              SIGNATURE HERE
+            </Box>
+          )}
         </Box>
         <Typography sx={{ fontSize: 15, fontWeight: 700, marginTop: '0.55rem' }}>
-          {formValues.preparedBy || 'Philson S. Josol'}
+          {DEFAULT_PREPARED_BY}
         </Typography>
         <Typography sx={{ fontSize: 13, color: '#707786' }}>
           Proprietor, Legato Sounds and Lights
@@ -356,9 +385,27 @@ const QuotationDocumentContent = ({
 )
 
 const ReviewInvoice = () => {
-  const { formValues, sections } = useInvoiceBuilder()
+  const { packageId } = useParams()
+  const template = packageId ? getPackageTemplate(packageId) : undefined
+  const isCustomPackage = packageId === CUSTOM_PACKAGE_ID
+  const { activePackageId, formValues, sections, selectPackageTemplate } =
+    useInvoiceBuilder()
   const exportRef = useRef<HTMLDivElement | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+  const invoiceNumber = useMemo(() => createRandomInvoiceNumber(), [])
+  const preparedDate = useMemo(() => new Date().toISOString().slice(0, 10), [])
+
+  useEffect(() => {
+    if (!packageId || !template || activePackageId === packageId) {
+      return
+    }
+
+    selectPackageTemplate(packageId)
+  }, [activePackageId, packageId, selectPackageTemplate, template])
+
+  if (!packageId || (!template && !isCustomPackage)) {
+    return <Navigate to='/' replace />
+  }
 
   const packageSections = sections
     .filter((section) => packageSectionIds.includes(section.id))
@@ -480,7 +527,7 @@ const ReviewInvoice = () => {
         pageIndex += 1
       }
 
-      pdf.save(`quotation-${formValues.invoiceNumber || 'draft'}.pdf`)
+      pdf.save(`invoice-${invoiceNumber || 'draft'}.pdf`)
     } finally {
       setIsExporting(false)
     }
@@ -501,6 +548,7 @@ const ReviewInvoice = () => {
       <Box
         sx={{
           display: 'flex',
+          flexWrap: 'wrap',
           justifyContent: 'center',
           gap: '0.75rem',
           marginBottom: '1rem',
@@ -510,11 +558,60 @@ const ReviewInvoice = () => {
         }}
       >
         <Button component={RouterLink} to='/' variant='outlined'>
+          Templates
+        </Button>
+        <Button
+          component={RouterLink}
+          to={`/package/${packageId}`}
+          variant='outlined'
+        >
           Back to Edit
         </Button>
         <Button variant='contained' onClick={handleExportPdf} disabled={isExporting}>
           {isExporting ? 'Exporting...' : 'Export as PDF'}
         </Button>
+      </Box>
+
+      <Box
+        sx={{
+          width: '100%',
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          touchAction: 'pan-x pan-y pinch-zoom',
+          paddingBottom: '0.5rem',
+        }}
+      >
+        <Box
+          sx={{
+            width: `${A4_WIDTH_PX}px`,
+            margin: '0 auto',
+          }}
+        >
+          <Box
+            sx={{
+              border: '1px solid #d9d9df',
+              width: `${A4_WIDTH_PX}px`,
+              margin: '0 auto',
+              padding: '0.45in 0.4in 0.55in',
+              background: '#ffffff',
+              boxSizing: 'border-box',
+              '@media print': {
+                border: 'none',
+                padding: '0.45in 0.4in 0.55in',
+              },
+            }}
+          >
+            <InvoiceDocumentContent
+              formValues={formValues}
+              invoiceNumber={invoiceNumber}
+              packageSections={packageSections}
+              preparedDate={preparedDate}
+              summaryRows={summaryRows}
+              grandTotal={grandTotal}
+            />
+          </Box>
+        </Box>
       </Box>
 
       <Box
@@ -538,37 +635,15 @@ const ReviewInvoice = () => {
             padding: '0.45in 0.4in 0.55in',
           }}
         >
-          <QuotationDocumentContent
+          <InvoiceDocumentContent
             formValues={formValues}
+            invoiceNumber={invoiceNumber}
             packageSections={packageSections}
+            preparedDate={preparedDate}
             summaryRows={summaryRows}
             grandTotal={grandTotal}
           />
         </Box>
-      </Box>
-
-      <Box
-        sx={{
-          border: '1px solid #d9d9df',
-          width: '100%',
-          maxWidth: '794px',
-          margin: '0 auto',
-          padding: { xs: '1.5rem', md: '2.5rem 2.5rem 3rem' },
-          background: '#ffffff',
-          boxSizing: 'border-box',
-          '@media print': {
-            border: 'none',
-            maxWidth: '100%',
-            padding: '0.45in 0.4in 0.55in',
-          },
-        }}
-      >
-        <QuotationDocumentContent
-          formValues={formValues}
-          packageSections={packageSections}
-          summaryRows={summaryRows}
-          grandTotal={grandTotal}
-        />
       </Box>
     </Box>
   )
