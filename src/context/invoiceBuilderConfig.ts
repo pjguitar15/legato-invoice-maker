@@ -17,6 +17,7 @@ export type InvoiceFormValues = {
 export type PackageTemplate = {
   id: string
   name: string
+  cardPrice: string
   priceLabel: string
   heroTitle: string
   heroAccent: string
@@ -99,8 +100,87 @@ export const mergeSectionsWithBase = (
 
 export const packageTemplates: PackageTemplate[] = [
   {
+    id: '7k-basic-sounds-and-lights',
+    name: '7K Basic Sounds and Lights',
+    cardPrice: '7K',
+    priceLabel: '7K only',
+    heroTitle: 'Basic Sounds and',
+    heroAccent: 'Lights Package',
+    description:
+      'Basic sounds and lights package with core audio, microphones, lighting, and event accessories.',
+    highlights: [
+      '2 powered speakers and Allen & Heath SQ5 mixer',
+      '2 wireless mics and 1 wired mic',
+      '4 RGB backlights, 4 amber front lights, and DMX controller',
+      '2 tech crews and transport service',
+    ],
+    selectedEquipmentBySection: {
+      1: [101, 102],
+      2: [201, 203, 204, 206],
+      3: [301, 302],
+      4: [401, 402, 403, 404, 405, 406, 407],
+      5: [501, 503],
+    },
+    defaultFormValues: {
+      packageOnePrice: '7000',
+    },
+  },
+  {
+    id: '10k-sounds-and-lights-with-subwoofers',
+    name: '10K Sounds and Lights with Subwoofers',
+    cardPrice: '10K',
+    priceLabel: '10K only',
+    heroTitle: 'Sounds and Lights with',
+    heroAccent: 'Subwoofers Package',
+    description:
+      'Audio package with subwoofers, microphones, lights, and the standard event support set.',
+    highlights: [
+      '2 powered speakers, SQ5 mixer, and 2 QSC subwoofers',
+      '2 wireless mics and 1 wired mic',
+      '4 RGB backlights, 4 amber front lights, and DMX controller',
+      '3 tech crews and transport service',
+    ],
+    selectedEquipmentBySection: {
+      1: [101, 102, 103],
+      2: [201, 203, 204, 206],
+      3: [301, 302],
+      4: [401, 402, 403, 404, 405, 406, 407],
+      5: [502, 503],
+    },
+    defaultFormValues: {
+      packageOnePrice: '10000',
+    },
+  },
+  {
+    id: '12k-sounds-and-lights-with-sub-and-monitors',
+    name: '12K Sounds and Lights with Sub and Monitors',
+    cardPrice: '12K',
+    priceLabel: '12K only',
+    heroTitle: 'Sounds and Lights',
+    heroAccent: 'With Sub and Monitors',
+    description:
+      'Expanded audio setup with subwoofers and monitors, plus lighting, accessories, and transport support.',
+    highlights: [
+      '2 powered speakers, SQ5 mixer, 2 subwoofers, and 2 monitors',
+      '2 wireless mics and 1 wired mic',
+      '4 RGB backlights, 4 amber front lights, and DMX controller',
+      '3 tech crews and transport service',
+    ],
+    selectedEquipmentBySection: {
+      1: [101, 102, 103, 104],
+      2: [201, 203, 204, 206],
+      3: [301, 302],
+      4: [401, 402, 403, 404, 405, 406, 407],
+      5: [502, 503],
+    },
+    defaultFormValues: {
+      packageOnePrice: '12000',
+    },
+  },
+  {
     id: '15k-sounds-and-lights',
     name: '15K Sounds and Lights',
+    cardPrice: '15K',
     priceLabel: '15K only',
     heroTitle: 'Sounds and Lights',
     heroAccent: 'With Sub and Monitors',
@@ -113,9 +193,11 @@ export const packageTemplates: PackageTemplate[] = [
       'Beam 295 heads, backlights, front lights, and controller',
     ],
     selectedEquipmentBySection: {
-      1: [102, 103, 104, 6, 107, 108, 109, 110, 111],
-      2: [200, 201, 202, 204, 205],
-      3: [300, 301, 303, 304],
+      1: [101, 102, 103, 104],
+      2: [202, 203, 205, 206, 207],
+      3: [301, 302],
+      4: [401, 402, 403, 404, 405, 406, 407],
+      5: [502, 503],
     },
     defaultFormValues: {
       packageOnePrice: '15000',

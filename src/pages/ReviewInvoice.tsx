@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { Box, Button, Divider, Typography } from '@mui/material'
 import { Link as RouterLink, Navigate, useParams } from 'react-router'
 import html2canvas from 'html2canvas'
@@ -14,13 +21,19 @@ import { useInvoiceBuilder } from '../context/useInvoiceBuilder'
 import { formatCurrency, formatDisplayDate } from '../utils/invoiceFormatting'
 
 const A4_WIDTH_PX = 794
-const PDF_PAGE_MARGIN_MM = 10
-const packageSectionIds = [1, 2, 3]
+const A4_HEIGHT_PX = Math.round((A4_WIDTH_PX * 297) / 210)
+const PAGE_PADDING = '0.45in 0.4in 0.55in'
+const PAGE_CONTENT_HEIGHT_PX = Math.round(A4_HEIGHT_PX - 0.45 * 96 - 0.55 * 96)
+const PAGE_OVERFLOW_BUFFER_PX = 36
+const packageSectionIds = [1, 2, 3, 4, 5, 6]
 const DEFAULT_PREPARED_BY = 'Philson S. Josol'
-const signatureAssetModules = import.meta.glob('../assets/philson-signature.png', {
-  eager: true,
-  import: 'default',
-}) as Record<string, string>
+const signatureAssetModules = import.meta.glob(
+  '../assets/philson-signature.png',
+  {
+    eager: true,
+    import: 'default',
+  },
+) as Record<string, string>
 const philsonSignature = Object.values(signatureAssetModules)[0]
 
 const terms = [
@@ -69,12 +82,41 @@ type SummaryRow = {
   total: number
 }
 
+type TableRow =
+  | {
+      id: string
+      kind: 'package-section'
+      no?: string
+      description: string
+      total?: string
+      emphasize?: boolean
+    }
+  | {
+      id: string
+      kind: 'package-item'
+      description: string
+    }
+  | {
+      id: string
+      kind: 'summary'
+      no: string
+      description: string
+      total: string
+    }
+  | {
+      id: string
+      kind: 'grand-total'
+      total: string
+    }
+
 type DocumentContentProps = {
   formValues: ReturnType<typeof useInvoiceBuilder>['formValues']
   invoiceNumber: string
   packageSections: Array<
     ReturnType<typeof useInvoiceBuilder>['sections'][number] & {
-      equipment: ReturnType<typeof useInvoiceBuilder>['sections'][number]['equipment']
+      equipment: ReturnType<
+        typeof useInvoiceBuilder
+      >['sections'][number]['equipment']
     }
   >
   preparedDate: string
@@ -82,14 +124,80 @@ type DocumentContentProps = {
   grandTotal: number
 }
 
-const InvoiceDocumentContent = ({
+type DocumentBlock = {
+  id: string
+  node: ReactNode
+  gapAfter?: number
+  paginationBuffer?: number
+  keepWithNext?: boolean
+  pageBreakAfter?: boolean
+}
+
+const buildTableRows = ({
   formValues,
-  invoiceNumber,
   packageSections,
-  preparedDate,
   summaryRows,
   grandTotal,
-}: DocumentContentProps) => (
+}: Pick<
+  DocumentContentProps,
+  'formValues' | 'packageSections' | 'summaryRows' | 'grandTotal'
+>): TableRow[] => {
+  const packageRows =
+    packageSections.length > 0
+      ? packageSections.flatMap((section, sectionIndex) => [
+          {
+            id: `package-section-${section.id}`,
+            kind: 'package-section' as const,
+            no: sectionIndex === 0 ? '01' : undefined,
+            description: section.label,
+            total:
+              sectionIndex === 0
+                ? `P${formatCurrency(formValues.packageOnePrice)}`
+                : undefined,
+            emphasize: true,
+          },
+          ...section.equipment.map((item) => ({
+            id: `package-item-${section.id}-${item.id}`,
+            kind: 'package-item' as const,
+            description: item.name,
+          })),
+        ])
+      : [
+          {
+            id: 'package-empty',
+            kind: 'package-item' as const,
+            description:
+              'Select package items from the builder page to populate this invoice.',
+          },
+        ]
+
+  const addOnRows = summaryRows.map((row) => ({
+    id: `summary-${row.no}`,
+    kind: 'summary' as const,
+    no: row.no,
+    description: row.title,
+    total: `P${formatCurrency(String(row.total))}`,
+  }))
+
+  return [
+    ...packageRows,
+    ...addOnRows,
+    {
+      id: 'grand-total',
+      kind: 'grand-total',
+      total: `TOTAL: P${formatCurrency(String(grandTotal))}`,
+    },
+  ]
+}
+
+const DocumentHeaderBlock = ({
+  formValues,
+  invoiceNumber,
+  preparedDate,
+}: Pick<
+  DocumentContentProps,
+  'formValues' | 'invoiceNumber' | 'preparedDate'
+>) => (
   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
     <Box
       sx={{
@@ -155,7 +263,7 @@ const InvoiceDocumentContent = ({
           color: '#b3afb1',
           fontWeight: 700,
         }}
-        >
+      >
         INVOICE #{invoiceNumber || '----'}
       </Typography>
     </Box>
@@ -196,193 +304,268 @@ const InvoiceDocumentContent = ({
     </Box>
 
     <Divider />
+  </Box>
+)
 
-    <Box sx={{ border: '1px solid #dfe3eb' }}>
+const TableHeader = () => (
+  <Box
+    sx={{
+      display: 'grid',
+      gridTemplateColumns: '44px minmax(0, 1fr) 126px',
+      background: '#040404',
+      color: '#ffffff',
+      fontSize: 13,
+      fontWeight: 700,
+    }}
+  >
+    <Box sx={{ padding: '0.75rem 0.5rem', borderRight: '1px solid #dfe3eb' }}>
+      No.
+    </Box>
+    <Box sx={{ padding: '0.75rem 0.6rem', borderRight: '1px solid #dfe3eb' }}>
+      Package Inclusions
+    </Box>
+    <Box sx={{ padding: '0.75rem 0.6rem', textAlign: 'right' }}>TOTAL</Box>
+  </Box>
+)
+
+const TableRowView = ({ row }: { row: TableRow }) => {
+  if (row.kind === 'grand-total') {
+    return (
       <Box
         sx={{
-          display: 'grid',
-          gridTemplateColumns: '44px minmax(0, 1fr) 126px',
-          background: '#040404',
-          color: '#ffffff',
-          fontSize: 13,
-          fontWeight: 700,
-        }}
-      >
-        <Box sx={{ padding: '0.75rem 0.5rem', borderRight: '1px solid #dfe3eb' }}>
-          No.
-        </Box>
-        <Box sx={{ padding: '0.75rem 0.6rem', borderRight: '1px solid #dfe3eb' }}>
-          Package Inclusions
-        </Box>
-        <Box sx={{ padding: '0.75rem 0.6rem', textAlign: 'right' }}>TOTAL</Box>
-      </Box>
-
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: '44px minmax(0, 1fr) 126px',
-          borderTop: '1px solid #dfe3eb',
-          minHeight: '30rem',
-        }}
-      >
-        <Box
-          sx={{
-            borderRight: '1px solid #dfe3eb',
-            padding: '1rem 0.5rem',
-            display: 'flex',
-            alignItems: 'flex-end',
-            fontSize: 14,
-          }}
-        >
-          01
-        </Box>
-        <Box sx={{ borderRight: '1px solid #dfe3eb', padding: '0.9rem 0.7rem 1.1rem' }}>
-          {packageSections.length > 0 ? (
-            packageSections.map((section) => (
-              <Box key={section.id} sx={{ marginBottom: '1.25rem' }}>
-                <Typography sx={{ fontSize: 15, fontWeight: 700, marginBottom: '0.45rem' }}>
-                  {section.label}:
-                </Typography>
-                {section.equipment.map((item) => (
-                  <Typography
-                    key={`${section.id}-${item.id}`}
-                    sx={{ fontSize: 14, lineHeight: 1.45 }}
-                  >
-                    {item.name}
-                  </Typography>
-                ))}
-              </Box>
-            ))
-          ) : (
-            <Typography sx={{ fontSize: 14, color: '#697180' }}>
-              Select audio, lighting, and microphone items from the builder page to
-              populate this package.
-            </Typography>
-          )}
-        </Box>
-        <Box
-          sx={{
-            padding: '1rem 0.7rem',
-            display: 'flex',
-            alignItems: 'flex-end',
-            justifyContent: 'flex-end',
-            fontSize: 14,
-          }}
-        >
-          P{formatCurrency(formValues.packageOnePrice)}
-        </Box>
-      </Box>
-
-      {summaryRows.map((row) => (
-        <Box
-          key={row.no}
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: '44px minmax(0, 1fr) 126px',
-            borderTop: '1px solid #dfe3eb',
-            minHeight: '3rem',
-          }}
-        >
-          <Box sx={{ borderRight: '1px solid #dfe3eb', padding: '0.65rem 0.5rem', fontSize: 14 }}>
-            {row.no}
-          </Box>
-          <Box
-            sx={{
-              borderRight: '1px solid #dfe3eb',
-              padding: '0.65rem 0.7rem',
-              fontSize: 14,
-              fontWeight: 600,
-            }}
-          >
-            {row.title}
-          </Box>
-          <Box sx={{ padding: '0.65rem 0.7rem', fontSize: 14, textAlign: 'right' }}>
-            P{formatCurrency(String(row.total))}
-          </Box>
-        </Box>
-      ))}
-
-      <Box
-        sx={{
-          borderTop: '1px solid #dfe3eb',
+          borderTop: '2px solid #dfe3eb',
           display: 'flex',
           justifyContent: 'flex-end',
           padding: '1rem 0.9rem',
         }}
       >
         <Typography sx={{ fontSize: 16, fontWeight: 700, color: '#394158' }}>
-          TOTAL: P{formatCurrency(String(grandTotal))}
+          {row.total}
         </Typography>
       </Box>
-    </Box>
+    )
+  }
 
-    <Box sx={{ paddingTop: '0.5rem' }}>
-      <Typography sx={{ fontSize: 15, fontWeight: 800, marginBottom: '1rem' }}>
-        TERMS AND CONDITIONS:
-      </Typography>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-        {terms.map((term, index) => (
-          <Box key={term.title}>
-            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>
-              {index + 1}. {term.title}
-            </Typography>
-            <Typography sx={{ fontSize: 13.5, lineHeight: 1.45 }}>
-              {term.body}
-            </Typography>
-          </Box>
-        ))}
-      </Box>
-    </Box>
-
+  return (
     <Box
       sx={{
-        paddingTop: '1.5rem',
-        display: 'flex',
-        justifyContent: 'flex-end',
+        display: 'grid',
+        gridTemplateColumns: '44px minmax(0, 1fr) 126px',
+        minHeight: row.kind === 'package-item' ? '1.95rem' : '3rem',
+        borderTop: row.kind === 'summary' ? '1px solid #dfe3eb' : 'none',
       }}
     >
-      <Box sx={{ width: '18rem', textAlign: 'center' }}>
-        <Box
-          sx={{
-            height: '4.5rem',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderBottom: '1px solid #6c7487',
-          }}
-        >
-          {philsonSignature ? (
-            <img
-              src={philsonSignature}
-              alt='Philson signature'
-              style={{
-                maxWidth: '100%',
-                maxHeight: '100%',
-                objectFit: 'contain',
-              }}
-            />
-          ) : (
-            <Box
-              sx={{
-                color: '#8a92a2',
-                fontSize: 14,
-                letterSpacing: '0.06em',
-              }}
-            >
-              SIGNATURE HERE
-            </Box>
-          )}
-        </Box>
-        <Typography sx={{ fontSize: 15, fontWeight: 700, marginTop: '0.55rem' }}>
-          {DEFAULT_PREPARED_BY}
-        </Typography>
-        <Typography sx={{ fontSize: 13, color: '#707786' }}>
-          Proprietor, Legato Sounds and Lights
-        </Typography>
+      <Box
+        sx={{
+          borderRight: '1px solid #dfe3eb',
+          padding: '0.65rem 0.5rem',
+          fontSize: 14,
+          color: row.kind === 'package-item' ? 'transparent' : '#2b2e3a',
+        }}
+      >
+        {'no' in row ? (row.no ?? ' ') : ' '}
       </Box>
+      <Box
+        sx={{
+          borderRight: '1px solid #dfe3eb',
+          padding:
+            row.kind === 'package-item' ? '0.28rem 0.7rem' : '0.65rem 0.7rem',
+          fontSize: row.kind === 'package-item' ? 13.5 : 14,
+          fontWeight:
+            row.kind === 'package-item'
+              ? 500
+              : row.kind === 'package-section' && row.emphasize
+                ? 700
+                : 600,
+          color: row.kind === 'package-item' ? '#4f5868' : '#2f3746',
+          lineHeight: row.kind === 'package-item' ? 1.2 : 1.35,
+        }}
+      >
+        {row.kind === 'package-item' ? `• ${row.description}` : row.description}
+      </Box>
+      <Box
+        sx={{
+          padding: '0.65rem 0.7rem',
+          fontSize: 14,
+          textAlign: 'right',
+          fontWeight: row.kind === 'summary' ? 600 : 500,
+          color: '#2f3746',
+        }}
+      >
+        {'total' in row ? (row.total ?? ' ') : ' '}
+      </Box>
+    </Box>
+  )
+}
+
+const SummaryTableBlock = ({ rows }: { rows: TableRow[] }) => (
+  <Box>
+    <TableHeader />
+    {rows.map((row) => (
+      <TableRowView key={row.id} row={row} />
+    ))}
+  </Box>
+)
+
+const TermsHeadingBlock = () => (
+  <Box sx={{ paddingTop: '0.5rem' }}>
+    <Typography sx={{ fontSize: 15, fontWeight: 800 }}>
+      TERMS AND CONDITIONS:
+    </Typography>
+  </Box>
+)
+
+const TermBlock = ({
+  index,
+  term,
+}: {
+  index: number
+  term: (typeof terms)[number]
+}) => (
+  <Box>
+    <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>
+      {index + 1}. {term.title}
+    </Typography>
+    <Typography sx={{ fontSize: 13.5, lineHeight: 1.45 }}>
+      {term.body}
+    </Typography>
+  </Box>
+)
+
+const SignatureBlock = () => (
+  <Box
+    sx={{
+      paddingTop: '1.5rem',
+      display: 'flex',
+      justifyContent: 'flex-end',
+    }}
+  >
+    <Box sx={{ width: '18rem', textAlign: 'center' }}>
+      <Box
+        sx={{
+          height: '4.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderBottom: '1px solid #6c7487',
+        }}
+      >
+        {philsonSignature ? (
+          <img
+            src={philsonSignature}
+            alt='Philson signature'
+            style={{
+              maxWidth: '100%',
+              maxHeight: '100%',
+              objectFit: 'contain',
+            }}
+          />
+        ) : (
+          <Box
+            sx={{
+              color: '#8a92a2',
+              fontSize: 14,
+              letterSpacing: '0.06em',
+            }}
+          >
+            SIGNATURE HERE
+          </Box>
+        )}
+      </Box>
+      <Typography sx={{ fontSize: 15, fontWeight: 700, marginTop: '0.55rem' }}>
+        {DEFAULT_PREPARED_BY}
+      </Typography>
+      <Typography sx={{ fontSize: 13, color: '#707786' }}>
+        Proprietor, Legato Sounds and Lights
+      </Typography>
     </Box>
   </Box>
 )
+
+const PageContent = ({ blocks }: { blocks: DocumentBlock[] }) => (
+  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+    {blocks.map((block, index) => (
+      <Box
+        key={block.id}
+        sx={{
+          marginBottom:
+            index === blocks.length - 1 ? 0 : (block.gapAfter ?? 24),
+        }}
+      >
+        {block.node}
+      </Box>
+    ))}
+  </Box>
+)
+
+const TermsSectionBlocks = ({ blocks }: { blocks: DocumentBlock[] }) => (
+  <Box sx={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    {blocks.map((block) => (
+      <Box key={block.id}>{block.node}</Box>
+    ))}
+  </Box>
+)
+
+const buildTableBlocks = (rows: TableRow[][]): DocumentBlock[] =>
+  rows.map((pageRows, index) => ({
+    id: `summary-table-${index + 1}`,
+    node: <SummaryTableBlock rows={pageRows} />,
+    gapAfter: 0,
+    pageBreakAfter: true,
+  }))
+
+const buildDocumentBlocks = ({
+  formValues,
+  invoiceNumber,
+  preparedDate,
+  tableBlocks,
+}: Pick<
+  DocumentContentProps,
+  'formValues' | 'invoiceNumber' | 'preparedDate'
+> & {
+  tableBlocks: DocumentBlock[]
+}): DocumentBlock[] => {
+  const termsBlocks: DocumentBlock[] = [
+    {
+      id: 'terms-heading',
+      node: <TermsHeadingBlock />,
+      paginationBuffer: 12,
+      keepWithNext: true,
+    },
+    ...terms.map((term, index) => ({
+      id: `term-${index + 1}`,
+      node: <TermBlock index={index} term={term} />,
+      paginationBuffer: 28,
+    })),
+  ]
+
+  return [
+    {
+      id: 'header',
+      node: (
+        <DocumentHeaderBlock
+          formValues={formValues}
+          invoiceNumber={invoiceNumber}
+          preparedDate={preparedDate}
+        />
+      ),
+      gapAfter: 0,
+    },
+    ...tableBlocks,
+    {
+      id: 'terms-section',
+      node: <TermsSectionBlocks blocks={termsBlocks} />,
+      gapAfter: 24,
+      paginationBuffer: 24,
+    },
+    {
+      id: 'signature',
+      node: <SignatureBlock />,
+      gapAfter: 0,
+      paginationBuffer: 20,
+    },
+  ]
+}
 
 const ReviewInvoice = () => {
   const { packageId } = useParams()
@@ -390,8 +573,16 @@ const ReviewInvoice = () => {
   const isCustomPackage = packageId === CUSTOM_PACKAGE_ID
   const { activePackageId, formValues, sections, selectPackageTemplate } =
     useInvoiceBuilder()
-  const exportRef = useRef<HTMLDivElement | null>(null)
+  const exportPageRefs = useRef<Array<HTMLDivElement | null>>([])
+  const measureBlockRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const measureTableRowRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [isExporting, setIsExporting] = useState(false)
+  const [measuredBlockHeights, setMeasuredBlockHeights] = useState<
+    Record<string, number>
+  >({})
+  const [measuredTableRowHeights, setMeasuredTableRowHeights] = useState<
+    Record<string, number>
+  >({})
   const invoiceNumber = useMemo(() => createRandomInvoiceNumber(), [])
   const preparedDate = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
@@ -402,10 +593,7 @@ const ReviewInvoice = () => {
 
     selectPackageTemplate(packageId)
   }, [activePackageId, packageId, selectPackageTemplate, template])
-
-  if (!packageId || (!template && !isCustomPackage)) {
-    return <Navigate to='/' replace />
-  }
+  const isInvalidRoute = !packageId || (!template && !isCustomPackage)
 
   const packageSections = sections
     .filter((section) => packageSectionIds.includes(section.id))
@@ -416,14 +604,14 @@ const ReviewInvoice = () => {
     .filter((section) => section.equipment.length > 0)
 
   const ledWallSelection = sections
-    .find((section) => section.id === 4)
+    .find((section) => section.id === 7)
     ?.equipment.find((item) => item.isChecked)
 
   const hasOrFee = Boolean(
-    sections.find((section) => section.id === 5)?.equipment[0]?.isChecked,
+    sections.find((section) => section.id === 8)?.equipment[0]?.isChecked,
   )
   const hasTranspoFee = Boolean(
-    sections.find((section) => section.id === 6)?.equipment[0]?.isChecked,
+    sections.find((section) => section.id === 9)?.equipment[0]?.isChecked,
   )
 
   const summaryRows: SummaryRow[] = [
@@ -454,77 +642,229 @@ const ReviewInvoice = () => {
     parseAmount(formValues.packageOnePrice) +
     summaryRows.reduce((sum, row) => sum + row.total, 0)
 
+  const tableRows = useMemo(
+    () =>
+      buildTableRows({
+        formValues,
+        packageSections,
+        summaryRows,
+        grandTotal,
+      }),
+    [formValues, grandTotal, packageSections, summaryRows],
+  )
+
+  useLayoutEffect(() => {
+    const nextHeights = Object.fromEntries(
+      tableRows.map((row) => [
+        row.id,
+        Math.ceil(
+          measureTableRowRefs.current[row.id]?.getBoundingClientRect().height ??
+            0,
+        ),
+      ]),
+    )
+
+    setMeasuredTableRowHeights((current) => {
+      const currentKeys = Object.keys(current)
+      const nextKeys = Object.keys(nextHeights)
+
+      if (
+        currentKeys.length === nextKeys.length &&
+        nextKeys.every((key) => current[key] === nextHeights[key])
+      ) {
+        return current
+      }
+
+      return nextHeights
+    })
+  }, [tableRows])
+
+  const paginatedTableRows = useMemo(() => {
+    const tableHeaderHeight = 44
+
+    if (tableRows.some((row) => !measuredTableRowHeights[row.id])) {
+      return [tableRows]
+    }
+
+    const headerHeight = measuredBlockHeights.header ?? 0
+    const firstPageAvailableHeight = Math.max(
+      PAGE_CONTENT_HEIGHT_PX - headerHeight - PAGE_OVERFLOW_BUFFER_PX,
+      tableHeaderHeight,
+    )
+
+    const pages: TableRow[][] = []
+    let currentPage: TableRow[] = []
+    let currentHeight = tableHeaderHeight
+    let currentPageLimit = firstPageAvailableHeight
+
+    tableRows.forEach((row) => {
+      const rowHeight = measuredTableRowHeights[row.id]
+
+      if (
+        currentPage.length > 0 &&
+        currentHeight + rowHeight > currentPageLimit
+      ) {
+        pages.push(currentPage)
+        currentPage = [row]
+        currentHeight = tableHeaderHeight + rowHeight
+        currentPageLimit = PAGE_CONTENT_HEIGHT_PX - PAGE_OVERFLOW_BUFFER_PX
+        return
+      }
+
+      currentPage.push(row)
+      currentHeight += rowHeight
+    })
+
+    if (currentPage.length > 0) {
+      pages.push(currentPage)
+    }
+
+    return pages
+  }, [measuredBlockHeights.header, measuredTableRowHeights, tableRows])
+
+  const tableBlocks = useMemo(
+    () => buildTableBlocks(paginatedTableRows),
+    [paginatedTableRows],
+  )
+
+  const documentBlocks = useMemo(
+    () =>
+      buildDocumentBlocks({
+        formValues,
+        invoiceNumber,
+        preparedDate,
+        tableBlocks,
+      }),
+    [formValues, invoiceNumber, preparedDate, tableBlocks],
+  )
+
+  useLayoutEffect(() => {
+    const nextHeights = Object.fromEntries(
+      documentBlocks.map((block) => [
+        block.id,
+        Math.ceil(
+          measureBlockRefs.current[block.id]?.getBoundingClientRect().height ??
+            0,
+        ),
+      ]),
+    )
+
+    setMeasuredBlockHeights((current) => {
+      const currentKeys = Object.keys(current)
+      const nextKeys = Object.keys(nextHeights)
+
+      if (
+        currentKeys.length === nextKeys.length &&
+        nextKeys.every((key) => current[key] === nextHeights[key])
+      ) {
+        return current
+      }
+
+      return nextHeights
+    })
+  }, [documentBlocks])
+
+  const paginatedBlocks = useMemo(() => {
+    if (documentBlocks.some((block) => !measuredBlockHeights[block.id])) {
+      return [documentBlocks]
+    }
+
+    const pages: DocumentBlock[][] = []
+    let currentPage: DocumentBlock[] = []
+    let currentHeight = 0
+
+    documentBlocks.forEach((block, index) => {
+      const blockHeight =
+        measuredBlockHeights[block.id] + (block.paginationBuffer ?? 0)
+      const gapHeight =
+        currentPage.length > 0
+          ? (currentPage[currentPage.length - 1].gapAfter ?? 24)
+          : 0
+      const nextBlock = documentBlocks[index + 1]
+      const keepWithNextHeight =
+        block.keepWithNext && nextBlock
+          ? (block.gapAfter ?? 24) +
+            measuredBlockHeights[nextBlock.id] +
+            (nextBlock.paginationBuffer ?? 0)
+          : 0
+
+      if (
+        currentPage.length > 0 &&
+        currentHeight + gapHeight + blockHeight + keepWithNextHeight >
+          PAGE_CONTENT_HEIGHT_PX - PAGE_OVERFLOW_BUFFER_PX
+      ) {
+        pages.push(currentPage)
+        currentPage = [block]
+        currentHeight = blockHeight
+        return
+      }
+
+      currentPage.push(block)
+      currentHeight += gapHeight + blockHeight
+
+      if (block.pageBreakAfter) {
+        pages.push(currentPage)
+        currentPage = []
+        currentHeight = 0
+      }
+    })
+
+    if (currentPage.length > 0) {
+      pages.push(currentPage)
+    }
+
+    return pages
+  }, [documentBlocks, measuredBlockHeights])
+
+  useEffect(() => {
+    exportPageRefs.current = exportPageRefs.current.slice(
+      0,
+      paginatedBlocks.length,
+    )
+  }, [paginatedBlocks.length])
+
+  if (isInvalidRoute) {
+    return <Navigate to='/' replace />
+  }
+
   const handleExportPdf = async () => {
-    if (!exportRef.current || isExporting) return
+    if (exportPageRefs.current.length === 0 || isExporting) return
 
     try {
       setIsExporting(true)
       await document.fonts.ready
 
-      const canvas = await html2canvas(exportRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        width: exportRef.current.scrollWidth,
-        height: exportRef.current.scrollHeight,
-        windowWidth: exportRef.current.scrollWidth,
-        windowHeight: exportRef.current.scrollHeight,
-      })
-
       const pdf = new jsPDF('p', 'mm', 'a4')
       const pageWidth = pdf.internal.pageSize.getWidth()
       const pageHeight = pdf.internal.pageSize.getHeight()
-      const imageWidth = pageWidth - PDF_PAGE_MARGIN_MM * 2
-      const pageContentHeight = pageHeight - PDF_PAGE_MARGIN_MM * 2
-      const pageCanvasHeight = Math.floor(
-        (canvas.width * pageContentHeight) / imageWidth,
-      )
-      let offsetY = 0
-      let pageIndex = 0
 
-      while (offsetY < canvas.height) {
-        const sliceHeight = Math.min(pageCanvasHeight, canvas.height - offsetY)
-        const pageCanvas = document.createElement('canvas')
-        pageCanvas.width = canvas.width
-        pageCanvas.height = sliceHeight
-
-        const context = pageCanvas.getContext('2d')
-
-        if (!context) {
-          throw new Error('Unable to create PDF export canvas context')
+      for (const [pageIndex, pageRef] of exportPageRefs.current.entries()) {
+        if (!pageRef) {
+          throw new Error('Unable to find one or more export pages')
         }
 
-        context.fillStyle = '#ffffff'
-        context.fillRect(0, 0, pageCanvas.width, pageCanvas.height)
-        context.drawImage(
-          canvas,
-          0,
-          offsetY,
-          canvas.width,
-          sliceHeight,
-          0,
-          0,
-          canvas.width,
-          sliceHeight,
-        )
-
-        const pageImageHeight = (sliceHeight * imageWidth) / canvas.width
+        const canvas = await html2canvas(pageRef, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          width: pageRef.scrollWidth,
+          height: pageRef.scrollHeight,
+          windowWidth: pageRef.scrollWidth,
+          windowHeight: pageRef.scrollHeight,
+        })
 
         if (pageIndex > 0) {
           pdf.addPage()
         }
 
         pdf.addImage(
-          pageCanvas.toDataURL('image/png'),
+          canvas.toDataURL('image/png'),
           'PNG',
-          PDF_PAGE_MARGIN_MM,
-          PDF_PAGE_MARGIN_MM,
-          imageWidth,
-          pageImageHeight,
+          0,
+          0,
+          pageWidth,
+          pageHeight,
         )
-
-        offsetY += sliceHeight
-        pageIndex += 1
       }
 
       pdf.save(`invoice-${invoiceNumber || 'draft'}.pdf`)
@@ -567,7 +907,11 @@ const ReviewInvoice = () => {
         >
           Back to Edit
         </Button>
-        <Button variant='contained' onClick={handleExportPdf} disabled={isExporting}>
+        <Button
+          variant='contained'
+          onClick={handleExportPdf}
+          disabled={isExporting}
+        >
           {isExporting ? 'Exporting...' : 'Export as PDF'}
         </Button>
       </Box>
@@ -586,31 +930,94 @@ const ReviewInvoice = () => {
           sx={{
             width: `${A4_WIDTH_PX}px`,
             margin: '0 auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem',
+            fontFamily: 'Montserrat, sans-serif',
           }}
         >
-          <Box
-            sx={{
-              border: '1px solid #d9d9df',
-              width: `${A4_WIDTH_PX}px`,
-              margin: '0 auto',
-              padding: '0.45in 0.4in 0.55in',
-              background: '#ffffff',
-              boxSizing: 'border-box',
-              '@media print': {
-                border: 'none',
-                padding: '0.45in 0.4in 0.55in',
-              },
-            }}
-          >
-            <InvoiceDocumentContent
-              formValues={formValues}
-              invoiceNumber={invoiceNumber}
-              packageSections={packageSections}
-              preparedDate={preparedDate}
-              summaryRows={summaryRows}
-              grandTotal={grandTotal}
-            />
+          {paginatedBlocks.map((pageBlocks, index) => (
+            <Box
+              key={`preview-page-${index + 1}`}
+              sx={{
+                border: '1px solid #d9d9df',
+                width: `${A4_WIDTH_PX}px`,
+                height: `${A4_HEIGHT_PX}px`,
+                margin: '0 auto',
+                padding: PAGE_PADDING,
+                background: '#ffffff',
+                boxSizing: 'border-box',
+                overflow: 'hidden',
+                '@media print': {
+                  border: 'none',
+                },
+              }}
+            >
+              <PageContent blocks={pageBlocks} />
+            </Box>
+          ))}
+        </Box>
+      </Box>
+
+      <Box
+        sx={{
+          position: 'fixed',
+          left: '-200vw',
+          top: 0,
+          opacity: 0,
+          pointerEvents: 'none',
+          zIndex: -2,
+        }}
+      >
+        <Box
+          sx={{
+            width: `${A4_WIDTH_PX}px`,
+            padding: PAGE_PADDING,
+            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 3,
+            fontFamily: 'Montserrat, sans-serif',
+          }}
+        >
+          <Box sx={{ border: '1px solid #dfe3eb' }}>
+            <TableHeader />
+            {tableRows.map((row) => (
+              <Box
+                key={`measure-row-${row.id}`}
+                ref={(node: HTMLDivElement | null) => {
+                  measureTableRowRefs.current[row.id] = node
+                }}
+              >
+                <TableRowView row={row} />
+              </Box>
+            ))}
           </Box>
+        </Box>
+        <Box
+          sx={{
+            width: `${A4_WIDTH_PX}px`,
+            padding: PAGE_PADDING,
+            boxSizing: 'border-box',
+            fontFamily: 'Montserrat, sans-serif',
+          }}
+        >
+          {documentBlocks.map((block, index) => (
+            <Box
+              key={`measure-${block.id}`}
+              ref={(node: HTMLDivElement | null) => {
+                measureBlockRefs.current[block.id] = node
+              }}
+              sx={{
+                marginBottom:
+                  index === documentBlocks.length - 1
+                    ? 0
+                    : (block.gapAfter ?? 24),
+              }}
+            >
+              {block.node}
+            </Box>
+          ))}
         </Box>
       </Box>
 
@@ -624,26 +1031,29 @@ const ReviewInvoice = () => {
           pointerEvents: 'none',
           zIndex: -1,
           overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
-        <Box
-          ref={exportRef}
-          sx={{
-            width: `${A4_WIDTH_PX}px`,
-            background: '#ffffff',
-            boxSizing: 'border-box',
-            padding: '0.45in 0.4in 0.55in',
-          }}
-        >
-          <InvoiceDocumentContent
-            formValues={formValues}
-            invoiceNumber={invoiceNumber}
-            packageSections={packageSections}
-            preparedDate={preparedDate}
-            summaryRows={summaryRows}
-            grandTotal={grandTotal}
-          />
-        </Box>
+        {paginatedBlocks.map((pageBlocks, index) => (
+          <Box
+            key={`export-page-${index + 1}`}
+            ref={(node: HTMLDivElement | null) => {
+              exportPageRefs.current[index] = node
+            }}
+            sx={{
+              width: `${A4_WIDTH_PX}px`,
+              height: `${A4_HEIGHT_PX}px`,
+              background: '#ffffff',
+              boxSizing: 'border-box',
+              padding: PAGE_PADDING,
+              overflow: 'hidden',
+              fontFamily: 'Montserrat, sans-serif',
+            }}
+          >
+            <PageContent blocks={pageBlocks} />
+          </Box>
+        ))}
       </Box>
     </Box>
   )

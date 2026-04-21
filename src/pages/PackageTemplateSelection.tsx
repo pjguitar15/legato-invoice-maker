@@ -96,7 +96,7 @@ const TemplateCard = ({
             letterSpacing: '-0.05em',
           }}
         >
-          15K
+          {template.cardPrice}
         </Typography>
         <Typography
           sx={{

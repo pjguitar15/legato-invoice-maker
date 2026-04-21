@@ -50,7 +50,7 @@ const fieldConfig: FieldConfig[] = [
 const Fields = () => {
   const { formValues, handleFieldChange, sections } = useInvoiceBuilder()
   const hasLedWallSelection = sections
-    .find((section) => section.id === 4)
+    .find((section) => section.id === 7)
     ?.equipment.some((item) => item.type === EquipmentTypes.LED_WALL && item.isChecked)
 
   const visibleFieldConfig = fieldConfig.filter(
