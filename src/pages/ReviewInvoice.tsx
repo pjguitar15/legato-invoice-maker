@@ -329,6 +329,8 @@ const TableHeader = () => (
       color: '#ffffff',
       fontSize: 13,
       fontWeight: 700,
+      borderLeft: '1px solid #dfe3eb',
+      borderRight: '1px solid #dfe3eb',
     }}
   >
     <Box sx={{ padding: '0.75rem 0.5rem', borderRight: '1px solid #dfe3eb' }}>
@@ -342,16 +344,18 @@ const TableHeader = () => (
 )
 
 const TableRowView = ({ row }: { row: TableRow }) => {
-  if (row.kind === 'grand-total') {
-    return (
-      <Box
-        sx={{
-          borderTop: '2px solid #dfe3eb',
-          display: 'flex',
-          justifyContent: 'flex-end',
-          padding: '1rem 0.9rem',
-        }}
-      >
+    if (row.kind === 'grand-total') {
+      return (
+        <Box
+          sx={{
+            borderTop: '2px solid #dfe3eb',
+            borderLeft: '1px solid #dfe3eb',
+            borderRight: '1px solid #dfe3eb',
+            display: 'flex',
+            justifyContent: 'flex-end',
+            padding: '1rem 0.9rem',
+          }}
+        >
         <Typography sx={{ fontSize: 16, fontWeight: 700, color: '#394158' }}>
           {row.total}
         </Typography>
@@ -360,14 +364,16 @@ const TableRowView = ({ row }: { row: TableRow }) => {
   }
 
   return (
-    <Box
-      sx={{
-        display: 'grid',
-        gridTemplateColumns: '44px minmax(0, 1fr) 126px',
-        minHeight: row.kind === 'package-item' ? '1.95rem' : '3rem',
-        borderTop: row.kind === 'summary' ? '1px solid #dfe3eb' : 'none',
-      }}
-    >
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: '44px minmax(0, 1fr) 126px',
+          minHeight: row.kind === 'package-item' ? '1.95rem' : '3rem',
+          borderTop: row.kind === 'summary' ? '1px solid #dfe3eb' : 'none',
+          borderLeft: '1px solid #dfe3eb',
+          borderRight: '1px solid #dfe3eb',
+        }}
+      >
       <Box
         sx={{
           borderRight: '1px solid #dfe3eb',
