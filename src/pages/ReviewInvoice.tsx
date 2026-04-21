@@ -26,7 +26,7 @@ const A4_HEIGHT_PX = Math.round((A4_WIDTH_PX * 297) / 210)
 const PAGE_PADDING = '0.45in 0.4in 0.55in'
 const PAGE_CONTENT_HEIGHT_PX = Math.round(A4_HEIGHT_PX - 0.45 * 96 - 0.55 * 96)
 const PAGE_OVERFLOW_BUFFER_PX = 36
-const packageSectionIds = [1, 2, 3, 4, 5, 6]
+const packageSectionIds = [1, 2, 3, 10, 11, 4, 5, 6]
 const DEFAULT_PREPARED_BY = 'Philson S. Josol'
 const signatureAssetModules = import.meta.glob(
   '../assets/philson-signature.png',
@@ -91,7 +91,6 @@ const sanitizeFilenamePart = (value: string, fallback: string) => {
 }
 
 type SummaryRow = {
-  no: string
   title: string
   total: number
 }
@@ -185,10 +184,10 @@ const buildTableRows = ({
           },
         ]
 
-  const addOnRows = summaryRows.map((row) => ({
-    id: `summary-${row.no}`,
+  const addOnRows = summaryRows.map((row, index) => ({
+    id: `summary-${index + 2}`,
     kind: 'summary' as const,
-    no: row.no,
+    no: String(index + 2).padStart(2, '0'),
     description: row.title,
     total: `P${formatCurrency(String(row.total))}`,
   }))
@@ -636,15 +635,29 @@ const ReviewInvoice = () => {
   const hasTranspoFee = Boolean(
     sections.find((section) => section.id === 9)?.equipment[0]?.isChecked,
   )
+  const hasRiser = Boolean(
+    sections.find((section) => section.id === 12)?.equipment[0]?.isChecked,
+  )
 
   const packageTotal = parseAmount(formValues.packageOnePrice)
   const ledWallTotal = ledWallSelection
-    ? parseAmount(formValues.ledWallPrice)
+    ? ledWallSelection.id === 702
+      ? 18000
+      : ledWallSelection.id === 701
+        ? 15000
+        : 0
     : 0
+  const riserTotal =
+    hasRiser && ledWallSelection?.id === 702
+      ? 2000
+      : hasRiser && ledWallTotal > 0
+        ? 3000
+        : 0
   const transpoTotal = hasTranspoFee
     ? parseAmount(formValues.transpoFeePrice)
     : 0
-  const subtotalBeforeOr = packageTotal + ledWallTotal + transpoTotal
+  const subtotalBeforeOr =
+    packageTotal + ledWallTotal + riserTotal + transpoTotal
   const orFeeTotal = hasOrFee
     ? roundUpToNearestFiveHundred(subtotalBeforeOr * 0.12)
     : 0
@@ -652,26 +665,29 @@ const ReviewInvoice = () => {
   const summaryRows: SummaryRow[] = [
     ledWallSelection
       ? {
-          no: '02',
           title: ledWallSelection.name,
           total: ledWallTotal,
         }
       : null,
+    riserTotal > 0
+      ? {
+          title: 'LED Wall Riser',
+          total: riserTotal,
+        }
+      : null,
     hasOrFee
       ? {
-          no: '03',
           title: 'OR Fee',
           total: orFeeTotal,
         }
       : null,
     hasTranspoFee
       ? {
-          no: '04',
           title: 'Transpo fee',
           total: transpoTotal,
         }
       : null,
-  ].filter(Boolean) as Array<{ no: string; title: string; total: number }>
+  ].filter(Boolean) as SummaryRow[]
 
   const grandTotal = subtotalBeforeOr + orFeeTotal
 

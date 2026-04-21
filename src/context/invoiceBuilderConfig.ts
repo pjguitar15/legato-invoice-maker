@@ -9,7 +9,6 @@ export type InvoiceFormValues = {
   eventVenue: string
   eventDate: string
   packageOnePrice: string
-  ledWallPrice: string
   transpoFeePrice: string
 }
 
@@ -36,7 +35,6 @@ export const createInitialFormValues = (): InvoiceFormValues => ({
   eventVenue: '',
   eventDate: '',
   packageOnePrice: '',
-  ledWallPrice: '',
   transpoFeePrice: '',
 })
 
@@ -199,6 +197,114 @@ export const packageTemplates: PackageTemplate[] = [
     },
     defaultFormValues: {
       packageOnePrice: '15000',
+    },
+  },
+  {
+    id: '25k-sounds-and-lights-with-full-band-setup',
+    name: '25K Sounds and Lights with Full Band Setup',
+    cardPrice: '25K',
+    priceLabel: '25K only',
+    heroTitle: 'Sounds and Lights',
+    heroAccent: 'With Full Band Setup',
+    description:
+      'Large full-band package with expanded monitors, drum kit support, amplifiers, microphones, lighting, and transport crew.',
+    highlights: [
+      'Expanded audio system with stage box, KLA181 subs, and 4 monitor speakers',
+      'Wireless and wired vocal microphone setup',
+      'Full drum package with drum mics and cymbals',
+      'Guitar amps, bass amp, 5 tech crews, and transport service',
+    ],
+    selectedEquipmentBySection: {
+      1: [101, 102, 105, 106, 107],
+      2: [202, 204, 209, 210],
+      3: [301, 303],
+      4: [401, 402, 403, 404, 405, 408, 407, 409],
+      5: [503, 504],
+      10: [1001, 1002, 1003, 1004, 1005, 1006, 1007],
+      11: [1101, 1102, 1103],
+    },
+    defaultFormValues: {
+      packageOnePrice: '25000',
+    },
+  },
+  {
+    id: '27k-school-event-package',
+    name: '27K School Event Package',
+    cardPrice: '27K',
+    priceLabel: '27K only',
+    heroTitle: 'School Event Package',
+    heroAccent: 'Good for 1000 Guests',
+    description:
+      'Large-format school event package with expanded speaker coverage, more wireless mics, moving heads, wash lights, and full venue lighting support.',
+    highlights: [
+      'Expanded audio system with delay speakers and frontfill speakers',
+      '4 wireless mics plus 1 wired mic',
+      'Moving heads with trusses, moving wash, par lights, and haze machine',
+      '3 tech crews and transport service',
+    ],
+    selectedEquipmentBySection: {
+      1: [101, 102, 103, 104, 108, 109],
+      2: [209, 211, 212, 213, 214, 215],
+      3: [304, 302],
+      4: [401, 402, 403, 404, 405, 406, 407],
+      5: [502, 503],
+      6: [604],
+    },
+    defaultFormValues: {
+      packageOnePrice: '27000',
+    },
+  },
+  {
+    id: '30k-sounds-and-lights-with-full-band-setup',
+    name: '30K Sounds and Lights with Full Band Setup',
+    cardPrice: '30K',
+    priceLabel: '30K only',
+    heroTitle: 'Sounds and Lights',
+    heroAccent: 'With Full Band Setup',
+    description:
+      'Premium full-band package with expanded monitors, drum kit support, amplifiers, moving heads, wash lights, and full transport crew.',
+    highlights: [
+      'Expanded audio system with stage box, KLA181 subs, and 4 monitor speakers',
+      'Wireless and wired vocal microphone setup',
+      'Full drum package with dedicated drum microphones',
+      'Moving headlights, moving wash, 5 tech crews, and transport service',
+    ],
+    selectedEquipmentBySection: {
+      1: [101, 102, 105, 106, 107],
+      2: [202, 204, 209, 210, 207, 212],
+      3: [301, 303],
+      4: [401, 402, 403, 404, 405, 408, 407, 409],
+      5: [503, 504],
+      10: [1001, 1002, 1003, 1004, 1005, 1006, 1007],
+      11: [1101, 1102, 1103],
+    },
+    defaultFormValues: {
+      packageOnePrice: '30000',
+    },
+  },
+  {
+    id: '70k-elegant-pageant-package',
+    name: '70K Elegant Pageant Package',
+    cardPrice: '70K',
+    priceLabel: '70K only',
+    heroTitle: 'Elegant Pageant',
+    heroAccent: 'Package',
+    description:
+      'Large pageant package with expanded subs, moving heads with trusses, LED wall, stage platform, communications, and full show lighting.',
+    highlights: [
+      'Expanded audio system with 4 subwoofers, 4 monitor speakers, and stage box',
+      '4 wireless mics and 2 wired mics',
+      'Moving heads with trusses, moving wash, backdrop lights, and haze machine',
+      'Built-in 9x12 LED wall, 16x24 stage, and 6 comm-set units',
+    ],
+    selectedEquipmentBySection: {
+      1: [101, 102, 105, 106, 110],
+      2: [211, 212, 209, 214, 216, 215],
+      3: [304, 303],
+      4: [401, 402, 403, 404, 405, 408, 407, 410, 411, 412],
+    },
+    defaultFormValues: {
+      packageOnePrice: '70000',
     },
   },
 ]

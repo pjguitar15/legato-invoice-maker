@@ -1,17 +1,25 @@
-import { Box, Typography } from "@mui/material"
+import { Box, FormControlLabel, Switch, Typography } from "@mui/material"
 import List from "./List"
-import Field from '../fields/Field'
 import { EquipmentTypes, type ListItemData } from "./listCheckerProps"
 import { styles } from '../formStyles'
 import { useInvoiceBuilder } from "../../../../context/useInvoiceBuilder"
 
 
 const ListChecker = () => {
-  const { formValues, sections, handleCheckClick, handleFieldChange } =
-    useInvoiceBuilder()
+  const { sections, handleCheckClick } = useInvoiceBuilder()
   const visibleSections = sections.filter(
-    (section) => section.id !== 8 && section.id !== 9,
+    (section) => section.id !== 8 && section.id !== 9 && section.id !== 12,
   )
+  const selectedLedWall = sections
+    .find((section) => section.id === 7)
+    ?.equipment.find(({ isChecked, type }) => type === EquipmentTypes.LED_WALL && isChecked)
+  const riserItem = sections.find((section) => section.id === 12)?.equipment[0]
+  const riserPrice =
+    selectedLedWall?.id === 702
+      ? 20000
+      : selectedLedWall?.id === 701
+        ? 18000
+        : null
 
   return (
     <Box sx={styles.root}>
@@ -35,19 +43,56 @@ const ListChecker = () => {
             )}
           </Box>
 
-          {item.id === 7 &&
-          item.equipment.some(
-            ({ isChecked, type }) =>
-              type === EquipmentTypes.LED_WALL && isChecked,
-          ) ? (
+          {item.id === 7 && selectedLedWall ? (
             <Box sx={{ marginTop: '0.6rem' }}>
-              <Field
-                name='ledWallPrice'
-                label='LED Wall Price'
-                type='number'
-                value={formValues.ledWallPrice}
-                onChange={handleFieldChange}
-              />
+              {riserItem && riserPrice ? (
+                <Box
+                  sx={{
+                    marginTop: '0.75rem',
+                    border: '1px solid #d8dce4',
+                    borderRadius: '12px',
+                    padding: '0.5rem 0.75rem 0.65rem',
+                    background: '#ffffff',
+                  }}
+                >
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={riserItem.isChecked}
+                        onChange={() => handleCheckClick(12, riserItem.id)}
+                      />
+                    }
+                    label='Include riser'
+                    sx={{
+                      margin: 0,
+                      width: '100%',
+                      justifyContent: 'space-between',
+                      '& .MuiFormControlLabel-label': {
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: '#2f3746',
+                      },
+                    }}
+                    labelPlacement='start'
+                  />
+
+                  {riserItem.isChecked ? (
+                    <Typography
+                      sx={{
+                        fontSize: 12.5,
+                        lineHeight: 1.45,
+                        color: '#667085',
+                        marginTop: '0.2rem',
+                        paddingRight: '0.25rem',
+                      }}
+                    >
+                      {selectedLedWall.id === 702
+                        ? '9x14 ft LED wall base price is P18,000. With riser, it becomes P20,000.'
+                        : '9x12 ft LED wall base price is P15,000. Add P3,000 when riser is included.'}
+                    </Typography>
+                  ) : null}
+                </Box>
+              ) : null}
             </Box>
           ) : null}
         </Box>
