@@ -10,7 +10,6 @@ export type InvoiceFormValues = {
   eventDate: string
   packageOnePrice: string
   ledWallPrice: string
-  orFeePrice: string
   transpoFeePrice: string
 }
 
@@ -33,13 +32,12 @@ export const createRandomInvoiceNumber = () =>
   String(Math.floor(Math.random() * 401) + 100)
 
 export const createInitialFormValues = (): InvoiceFormValues => ({
-  clientName: 'Gloriamaris Greenhills',
-  eventVenue: 'Gloriamaris Greenhills',
-  eventDate: '2026-01-29',
-  packageOnePrice: '15000',
-  ledWallPrice: '18000',
-  orFeePrice: '4000',
-  transpoFeePrice: '2000',
+  clientName: '',
+  eventVenue: '',
+  eventDate: '',
+  packageOnePrice: '',
+  ledWallPrice: '',
+  transpoFeePrice: '',
 })
 
 export const initialFormValues: InvoiceFormValues = createInitialFormValues()

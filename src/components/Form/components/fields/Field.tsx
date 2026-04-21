@@ -8,9 +8,19 @@ type FieldProps = {
   type?: string
   value: string
   onChange: (event: ChangeEvent<HTMLInputElement>) => void
+  error?: boolean
+  helperText?: string
 }
 
-const Field = ({ name, label, type, value, onChange }: FieldProps) => {
+const Field = ({
+  name,
+  label,
+  type,
+  value,
+  onChange,
+  error,
+  helperText,
+}: FieldProps) => {
   return (
     <Box>
       <Box sx={styles.fieldContainer}>
@@ -21,6 +31,8 @@ const Field = ({ name, label, type, value, onChange }: FieldProps) => {
           type={type}
           value={value}
           onChange={onChange}
+          error={error}
+          helperText={helperText}
           slotProps={
             type === 'date'
               ? {

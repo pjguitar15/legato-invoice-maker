@@ -10,6 +10,7 @@ import { Box, Button, Divider, Typography } from '@mui/material'
 import { Link as RouterLink, Navigate, useParams } from 'react-router'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
+import { FiDownload, FiEdit3, FiLayout } from 'react-icons/fi'
 import { DEFAULT_BACKGROUND_COLOR } from '../mainStyleConst'
 import legatoLogo from '../assets/legato-black.png'
 import {
@@ -75,6 +76,9 @@ const parseAmount = (value: string) => {
   const amount = Number(value)
   return Number.isNaN(amount) ? 0 : amount
 }
+
+const roundUpToNearestFiveHundred = (value: number) =>
+  Math.ceil(value / 500) * 500
 
 type SummaryRow = {
   no: string
@@ -593,6 +597,15 @@ const ReviewInvoice = () => {
 
     selectPackageTemplate(packageId)
   }, [activePackageId, packageId, selectPackageTemplate, template])
+
+  useEffect(() => {
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: 'auto',
+    })
+  }, [packageId])
+
   const isInvalidRoute = !packageId || (!template && !isCustomPackage)
 
   const packageSections = sections
@@ -614,33 +627,43 @@ const ReviewInvoice = () => {
     sections.find((section) => section.id === 9)?.equipment[0]?.isChecked,
   )
 
+  const packageTotal = parseAmount(formValues.packageOnePrice)
+  const ledWallTotal = ledWallSelection
+    ? parseAmount(formValues.ledWallPrice)
+    : 0
+  const transpoTotal = hasTranspoFee
+    ? parseAmount(formValues.transpoFeePrice)
+    : 0
+  const subtotalBeforeOr = packageTotal + ledWallTotal + transpoTotal
+  const orFeeTotal = hasOrFee
+    ? roundUpToNearestFiveHundred(subtotalBeforeOr * 0.12)
+    : 0
+
   const summaryRows: SummaryRow[] = [
     ledWallSelection
       ? {
           no: '02',
           title: ledWallSelection.name,
-          total: parseAmount(formValues.ledWallPrice),
+          total: ledWallTotal,
         }
       : null,
     hasOrFee
       ? {
           no: '03',
           title: 'OR Fee',
-          total: parseAmount(formValues.orFeePrice),
+          total: orFeeTotal,
         }
       : null,
     hasTranspoFee
       ? {
           no: '04',
           title: 'Transpo fee',
-          total: parseAmount(formValues.transpoFeePrice),
+          total: transpoTotal,
         }
       : null,
   ].filter(Boolean) as Array<{ no: string; title: string; total: number }>
 
-  const grandTotal =
-    parseAmount(formValues.packageOnePrice) +
-    summaryRows.reduce((sum, row) => sum + row.total, 0)
+  const grandTotal = subtotalBeforeOr + orFeeTotal
 
   const tableRows = useMemo(
     () =>
@@ -897,22 +920,98 @@ const ReviewInvoice = () => {
           },
         }}
       >
-        <Button component={RouterLink} to='/' variant='outlined'>
-          Templates
+        <Button
+          component={RouterLink}
+          to='/'
+          variant='outlined'
+          aria-label='Templates'
+          sx={{
+            minWidth: { xs: '3rem', sm: 'unset' },
+            paddingInline: { xs: '0.8rem', sm: '1rem' },
+          }}
+        >
+          <Box
+            component='span'
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 18,
+            }}
+          >
+            <FiLayout />
+          </Box>
+          <Box
+            component='span'
+            sx={{
+              display: { xs: 'none', sm: 'inline' },
+              marginLeft: '0.5rem',
+            }}
+          >
+            Templates
+          </Box>
         </Button>
         <Button
           component={RouterLink}
           to={`/package/${packageId}`}
           variant='outlined'
+          aria-label='Back to Edit'
+          sx={{
+            minWidth: { xs: '3rem', sm: 'unset' },
+            paddingInline: { xs: '0.8rem', sm: '1rem' },
+          }}
         >
-          Back to Edit
+          <Box
+            component='span'
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 18,
+            }}
+          >
+            <FiEdit3 />
+          </Box>
+          <Box
+            component='span'
+            sx={{
+              display: { xs: 'none', sm: 'inline' },
+              marginLeft: '0.5rem',
+            }}
+          >
+            Back to Edit
+          </Box>
         </Button>
         <Button
           variant='contained'
           onClick={handleExportPdf}
           disabled={isExporting}
+          aria-label={isExporting ? 'Exporting PDF' : 'Export as PDF'}
+          sx={{
+            minWidth: { xs: '3rem', sm: 'unset' },
+            paddingInline: { xs: '0.8rem', sm: '1rem' },
+          }}
         >
-          {isExporting ? 'Exporting...' : 'Export as PDF'}
+          <Box
+            component='span'
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 18,
+            }}
+          >
+            <FiDownload />
+          </Box>
+          <Box
+            component='span'
+            sx={{
+              display: { xs: 'none', sm: 'inline' },
+              marginLeft: '0.5rem',
+            }}
+          >
+            {isExporting ? 'Exporting...' : 'Export as PDF'}
+          </Box>
         </Button>
       </Box>
 

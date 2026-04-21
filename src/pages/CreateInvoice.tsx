@@ -1,21 +1,29 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Box, Button, Typography } from '@mui/material'
-import { Link as RouterLink, Navigate, useParams } from 'react-router'
+import { Link as RouterLink, Navigate, useNavigate, useParams } from 'react-router'
 import Fields from '../components/Form/components/fields/Fields'
 import ListChecker from '../components/Form/components/list-checker/ListChecker'
 import { DEFAULT_BACKGROUND_COLOR } from '../mainStyleConst'
 import {
   CUSTOM_PACKAGE_ID,
+  type InvoiceFormValues,
   getPackageTemplate,
 } from '../context/invoiceBuilderConfig'
 import { useInvoiceBuilder } from '../context/useInvoiceBuilder'
 
 const CreateInvoice = () => {
   const { packageId } = useParams()
+  const navigate = useNavigate()
   const template = packageId ? getPackageTemplate(packageId) : undefined
   const isCustomPackage = packageId === CUSTOM_PACKAGE_ID
-  const { activePackageId, resetInvoiceBuilder, selectPackageTemplate } =
-    useInvoiceBuilder()
+  const [showValidation, setShowValidation] = useState(false)
+  const {
+    activePackageId,
+    formValues,
+    sections,
+    resetInvoiceBuilder,
+    selectPackageTemplate,
+  } = useInvoiceBuilder()
 
   useEffect(() => {
     if (isCustomPackage) {
@@ -39,6 +47,72 @@ const CreateInvoice = () => {
     selectPackageTemplate,
     template,
   ])
+
+  const validationErrors = useMemo<
+    Partial<Record<keyof InvoiceFormValues, string>>
+  >(() => {
+    const hasTranspoFee = Boolean(
+      sections.find((section) => section.id === 9)?.equipment[0]?.isChecked,
+    )
+
+    return {
+      clientName: formValues.clientName.trim()
+        ? undefined
+        : 'Prepared For is required',
+      eventVenue: formValues.eventVenue.trim()
+        ? undefined
+        : 'Event Venue is required',
+      transpoFeePrice:
+        hasTranspoFee && !formValues.transpoFeePrice.trim()
+          ? 'Transpo Fee Price is required'
+          : undefined,
+    }
+  }, [
+    formValues.clientName,
+    formValues.eventVenue,
+    formValues.transpoFeePrice,
+    sections,
+  ])
+
+  const hasValidationErrors = Boolean(
+    validationErrors.clientName ||
+      validationErrors.eventVenue ||
+      validationErrors.transpoFeePrice,
+  )
+
+  const visibleValidationErrors = showValidation ? validationErrors : undefined
+
+  const handleReviewInvoice = () => {
+    if (hasValidationErrors) {
+      setShowValidation(true)
+
+      const firstInvalidFieldName = validationErrors.clientName
+        ? 'clientName'
+        : validationErrors.eventVenue
+          ? 'eventVenue'
+          : validationErrors.transpoFeePrice
+            ? 'transpoFeePrice'
+          : null
+
+      if (firstInvalidFieldName) {
+        requestAnimationFrame(() => {
+          const field = document.querySelector<HTMLInputElement>(
+            `input[name="${firstInvalidFieldName}"]`,
+          )
+
+          field?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+          })
+          field?.focus()
+        })
+      }
+
+      return
+    }
+
+    navigate(`/package/${packageId}/review`)
+  }
 
   if (!packageId || (!template && !isCustomPackage)) {
     return <Navigate to='/' replace />
@@ -114,7 +188,7 @@ const CreateInvoice = () => {
           </Typography>
         </Box>
 
-        <Fields />
+        <Fields errors={visibleValidationErrors} />
         <ListChecker />
         <Box
           sx={{
@@ -130,12 +204,7 @@ const CreateInvoice = () => {
           <Button component={RouterLink} to='/' variant='outlined' fullWidth>
             Change template
           </Button>
-          <Button
-            component={RouterLink}
-            to={`/package/${packageId}/review`}
-            variant='contained'
-            fullWidth
-          >
+          <Button variant='contained' fullWidth onClick={handleReviewInvoice}>
             Review invoice
           </Button>
         </Box>

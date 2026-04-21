@@ -7,10 +7,13 @@ import { useInvoiceBuilder } from "../../../../context/useInvoiceBuilder"
 
 const ListChecker = () => {
   const { sections, handleCheckClick } = useInvoiceBuilder()
+  const visibleSections = sections.filter(
+    (section) => section.id !== 8 && section.id !== 9,
+  )
 
   return (
     <Box sx={styles.root}>
-      {sections.map((item) => (
+      {visibleSections.map((item) => (
         <Box key={item.id}>
           <Typography sx={styles.heading}>{item.label}</Typography>
 
