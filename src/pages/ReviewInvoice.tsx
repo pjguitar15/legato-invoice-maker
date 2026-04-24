@@ -19,6 +19,10 @@ import {
   getPackageTemplate,
 } from '../context/invoiceBuilderConfig'
 import { useInvoiceBuilder } from '../context/useInvoiceBuilder'
+import {
+  SECTION_IDS,
+  createItemId,
+} from '../components/Form/components/list-checker/testData'
 import { formatCurrency, formatDisplayDate } from '../utils/invoiceFormatting'
 
 const A4_WIDTH_PX = 794
@@ -26,7 +30,16 @@ const A4_HEIGHT_PX = Math.round((A4_WIDTH_PX * 297) / 210)
 const PAGE_PADDING = '0.45in 0.4in 0.55in'
 const PAGE_CONTENT_HEIGHT_PX = Math.round(A4_HEIGHT_PX - 0.45 * 96 - 0.55 * 96)
 const PAGE_OVERFLOW_BUFFER_PX = 36
-const packageSectionIds = [1, 2, 3, 10, 11, 4, 5, 6]
+const packageSectionIds: string[] = [
+  SECTION_IDS.AUDIO_SYSTEM,
+  SECTION_IDS.LIGHTING_SYSTEM,
+  SECTION_IDS.MICROPHONE,
+  SECTION_IDS.DRUMS,
+  SECTION_IDS.AMPLIFIERS,
+  SECTION_IDS.OTHERS,
+  SECTION_IDS.CREW_AND_TRANSPORT,
+  SECTION_IDS.ADD_ONS,
+]
 const DEFAULT_PREPARED_BY = 'Philson S. Josol'
 const signatureAssetModules = import.meta.glob(
   '../assets/philson-signature.png',
@@ -632,29 +645,35 @@ const ReviewInvoice = () => {
     .filter((section) => section.equipment.length > 0)
 
   const ledWallSelection = sections
-    .find((section) => section.id === 7)
+    .find((section) => section.id === SECTION_IDS.LED_WALL)
     ?.equipment.find((item) => item.isChecked)
 
   const hasOrFee = Boolean(
-    sections.find((section) => section.id === 8)?.equipment[0]?.isChecked,
+    sections.find(
+      (section) => section.id === SECTION_IDS.OFFICIAL_RECEIPT_FEE,
+    )?.equipment[0]?.isChecked,
   )
   const hasTranspoFee = Boolean(
-    sections.find((section) => section.id === 9)?.equipment[0]?.isChecked,
+    sections.find(
+      (section) => section.id === SECTION_IDS.TRANSPORTATION_FEE,
+    )?.equipment[0]?.isChecked,
   )
   const hasRiser = Boolean(
-    sections.find((section) => section.id === 12)?.equipment[0]?.isChecked,
+    sections.find(
+      (section) => section.id === SECTION_IDS.LED_WALL_RISER,
+    )?.equipment[0]?.isChecked,
   )
 
   const packageTotal = parseAmount(formValues.packageOnePrice)
   const ledWallTotal = ledWallSelection
-    ? ledWallSelection.id === 702
+    ? ledWallSelection.id === createItemId('led-wall-9x14')
       ? 18000
-      : ledWallSelection.id === 701
+      : ledWallSelection.id === createItemId('led-wall-9x12')
         ? 15000
         : 0
     : 0
   const riserTotal =
-    hasRiser && ledWallSelection?.id === 702
+    hasRiser && ledWallSelection?.id === createItemId('led-wall-9x14')
       ? 2000
       : hasRiser && ledWallTotal > 0
         ? 3000

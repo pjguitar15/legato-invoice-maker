@@ -3,21 +3,27 @@ import List from "./List"
 import { EquipmentTypes, type ListItemData } from "./listCheckerProps"
 import { styles } from '../formStyles'
 import { useInvoiceBuilder } from "../../../../context/useInvoiceBuilder"
+import { SECTION_IDS, createItemId } from './testData'
 
 
 const ListChecker = () => {
   const { sections, handleCheckClick } = useInvoiceBuilder()
   const visibleSections = sections.filter(
-    (section) => section.id !== 8 && section.id !== 9 && section.id !== 12,
+    (section) =>
+      section.id !== SECTION_IDS.OFFICIAL_RECEIPT_FEE &&
+      section.id !== SECTION_IDS.TRANSPORTATION_FEE &&
+      section.id !== SECTION_IDS.LED_WALL_RISER,
   )
   const selectedLedWall = sections
-    .find((section) => section.id === 7)
+    .find((section) => section.id === SECTION_IDS.LED_WALL)
     ?.equipment.find(({ isChecked, type }) => type === EquipmentTypes.LED_WALL && isChecked)
-  const riserItem = sections.find((section) => section.id === 12)?.equipment[0]
+  const riserItem = sections.find(
+    (section) => section.id === SECTION_IDS.LED_WALL_RISER,
+  )?.equipment[0]
   const riserPrice =
-    selectedLedWall?.id === 702
+    selectedLedWall?.id === createItemId('led-wall-9x14')
       ? 20000
-      : selectedLedWall?.id === 701
+      : selectedLedWall?.id === createItemId('led-wall-9x12')
         ? 18000
         : null
 
@@ -43,7 +49,7 @@ const ListChecker = () => {
             )}
           </Box>
 
-          {item.id === 7 && selectedLedWall ? (
+          {item.id === SECTION_IDS.LED_WALL && selectedLedWall ? (
             <Box sx={{ marginTop: '0.6rem' }}>
               {riserItem && riserPrice ? (
                 <Box
@@ -59,7 +65,9 @@ const ListChecker = () => {
                     control={
                       <Switch
                         checked={riserItem.isChecked}
-                        onChange={() => handleCheckClick(12, riserItem.id)}
+                        onChange={() =>
+                          handleCheckClick(SECTION_IDS.LED_WALL_RISER, riserItem.id)
+                        }
                       />
                     }
                     label='Include riser'
@@ -86,7 +94,7 @@ const ListChecker = () => {
                         paddingRight: '0.25rem',
                       }}
                     >
-                      {selectedLedWall.id === 702
+                      {selectedLedWall.id === createItemId('led-wall-9x14')
                         ? '9x14 ft LED wall base price is P18,000. With riser, it becomes P20,000.'
                         : '9x12 ft LED wall base price is P15,000. Add P3,000 when riser is included.'}
                     </Typography>

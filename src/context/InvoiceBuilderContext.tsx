@@ -90,7 +90,7 @@ export const InvoiceBuilderProvider = ({ children }: PropsWithChildren) => {
     }))
   }, [])
 
-  const handleCheckClick = useCallback((sectionId: number, id: number) => {
+  const handleCheckClick = useCallback((sectionId: string, id: string) => {
     setSections((current) =>
       current.map((section) => {
         if (section.id !== sectionId) return section

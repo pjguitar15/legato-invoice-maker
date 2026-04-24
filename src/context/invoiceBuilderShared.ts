@@ -7,7 +7,7 @@ export type InvoiceBuilderContextValue = {
   formValues: InvoiceFormValues
   sections: LabelAndEquipmentProps[]
   handleFieldChange: (event: ChangeEvent<HTMLInputElement>) => void
-  handleCheckClick: (sectionId: number, id: number) => void
+  handleCheckClick: (sectionId: string, id: string) => void
   selectPackageTemplate: (packageId: string) => boolean
   resetInvoiceBuilder: () => void
 }

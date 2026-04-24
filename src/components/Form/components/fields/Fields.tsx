@@ -3,6 +3,7 @@ import { styles } from '../formStyles'
 import Field from './Field'
 import { useInvoiceBuilder } from '../../../../context/useInvoiceBuilder'
 import type { InvoiceFormValues } from '../../../../context/invoiceBuilderConfig'
+import { SECTION_IDS } from '../list-checker/testData'
 
 type FieldConfig = {
   name: keyof InvoiceFormValues
@@ -38,8 +39,12 @@ const fieldConfig: FieldConfig[] = [
 const Fields = ({ errors }: FieldsProps) => {
   const { formValues, handleFieldChange, handleCheckClick, sections } =
     useInvoiceBuilder()
-  const orFeeItem = sections.find((section) => section.id === 8)?.equipment[0]
-  const transpoFeeItem = sections.find((section) => section.id === 9)?.equipment[0]
+  const orFeeItem = sections.find(
+    (section) => section.id === SECTION_IDS.OFFICIAL_RECEIPT_FEE,
+  )?.equipment[0]
+  const transpoFeeItem = sections.find(
+    (section) => section.id === SECTION_IDS.TRANSPORTATION_FEE,
+  )?.equipment[0]
 
   return (
     <Box sx={styles.root}>
@@ -70,7 +75,9 @@ const Fields = ({ errors }: FieldsProps) => {
               control={
                 <Switch
                   checked={orFeeItem.isChecked}
-                  onChange={() => handleCheckClick(8, orFeeItem.id)}
+                  onChange={() =>
+                    handleCheckClick(SECTION_IDS.OFFICIAL_RECEIPT_FEE, orFeeItem.id)
+                  }
                 />
               }
               label='Include OR fee'
@@ -120,7 +127,9 @@ const Fields = ({ errors }: FieldsProps) => {
               control={
                 <Switch
                   checked={transpoFeeItem.isChecked}
-                  onChange={() => handleCheckClick(9, transpoFeeItem.id)}
+                  onChange={() =>
+                    handleCheckClick(SECTION_IDS.TRANSPORTATION_FEE, transpoFeeItem.id)
+                  }
                 />
               }
               label='Include transpo fee'

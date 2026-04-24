@@ -2,7 +2,11 @@ import {
   EquipmentTypes,
   type LabelAndEquipmentProps,
 } from '../components/Form/components/list-checker/listCheckerProps'
-import { SAMPLE_OBJECT_ARRAY } from '../components/Form/components/list-checker/testData'
+import {
+  SAMPLE_OBJECT_ARRAY,
+  SECTION_IDS,
+  createItemId,
+} from '../components/Form/components/list-checker/testData'
 
 export type InvoiceFormValues = {
   clientName: string
@@ -21,7 +25,7 @@ export type PackageTemplate = {
   heroAccent: string
   description: string
   highlights: string[]
-  selectedEquipmentBySection: Record<number, number[]>
+  selectedEquipmentBySection: Record<string, string[]>
   defaultFormValues: Partial<InvoiceFormValues>
 }
 
@@ -39,6 +43,11 @@ export const createInitialFormValues = (): InvoiceFormValues => ({
 })
 
 export const initialFormValues: InvoiceFormValues = createInitialFormValues()
+
+const itemIds = new Proxy({} as Record<string, string>, {
+  get: (_, key) =>
+    createItemId(String(key).toLowerCase().replaceAll('_', '-')),
+})
 
 const typeOrder: Record<EquipmentTypes, number> = {
   [EquipmentTypes.SPEAKER]: 0,
@@ -111,11 +120,33 @@ export const packageTemplates: PackageTemplate[] = [
       '2 tech crews and transport service',
     ],
     selectedEquipmentBySection: {
-      1: [101, 102],
-      2: [201, 203, 204, 206],
-      3: [301, 302],
-      4: [401, 402, 403, 404, 405, 406, 407],
-      5: [501, 503],
+      [SECTION_IDS.AUDIO_SYSTEM]: [
+        createItemId('audio-speakers-2'),
+        createItemId('audio-mixer-sq5'),
+      ],
+      [SECTION_IDS.LIGHTING_SYSTEM]: [
+        createItemId('light-backlights-rgb-4'),
+        createItemId('light-dmx-512-controller'),
+        createItemId('light-front-lights-amber-4'),
+        createItemId('accessory-t-bar-stands-2'),
+      ],
+      [SECTION_IDS.MICROPHONE]: [
+        createItemId('mic-wireless-2'),
+        createItemId('mic-wired-1'),
+      ],
+      [SECTION_IDS.OTHERS]: [
+        createItemId('other-speaker-stands-2'),
+        createItemId('other-xlr-cables'),
+        createItemId('other-cable-ramps-2'),
+        createItemId('other-extension-cables'),
+        createItemId('other-aux-cable'),
+        createItemId('other-mic-stand-1'),
+        createItemId('other-lyric-stand-1'),
+      ],
+      [SECTION_IDS.CREW_AND_TRANSPORT]: [
+        createItemId('crew-tech-2'),
+        createItemId('crew-transport-service'),
+      ],
     },
     defaultFormValues: {
       packageOnePrice: '7000',
@@ -137,11 +168,34 @@ export const packageTemplates: PackageTemplate[] = [
       '3 tech crews and transport service',
     ],
     selectedEquipmentBySection: {
-      1: [101, 102, 103],
-      2: [201, 203, 204, 206],
-      3: [301, 302],
-      4: [401, 402, 403, 404, 405, 406, 407],
-      5: [502, 503],
+      [SECTION_IDS.AUDIO_SYSTEM]: [
+        createItemId('audio-speakers-2'),
+        createItemId('audio-mixer-sq5'),
+        createItemId('audio-subwoofers-2-kw181'),
+      ],
+      [SECTION_IDS.LIGHTING_SYSTEM]: [
+        createItemId('light-backlights-rgb-4'),
+        createItemId('light-dmx-512-controller'),
+        createItemId('light-front-lights-amber-4'),
+        createItemId('accessory-t-bar-stands-2'),
+      ],
+      [SECTION_IDS.MICROPHONE]: [
+        createItemId('mic-wireless-2'),
+        createItemId('mic-wired-1'),
+      ],
+      [SECTION_IDS.OTHERS]: [
+        createItemId('other-speaker-stands-2'),
+        createItemId('other-xlr-cables'),
+        createItemId('other-cable-ramps-2'),
+        createItemId('other-extension-cables'),
+        createItemId('other-aux-cable'),
+        createItemId('other-mic-stand-1'),
+        createItemId('other-lyric-stand-1'),
+      ],
+      [SECTION_IDS.CREW_AND_TRANSPORT]: [
+        createItemId('crew-tech-3'),
+        createItemId('crew-transport-service'),
+      ],
     },
     defaultFormValues: {
       packageOnePrice: '10000',
@@ -163,11 +217,35 @@ export const packageTemplates: PackageTemplate[] = [
       '3 tech crews and transport service',
     ],
     selectedEquipmentBySection: {
-      1: [101, 102, 103, 104],
-      2: [201, 203, 204, 206],
-      3: [301, 302],
-      4: [401, 402, 403, 404, 405, 406, 407],
-      5: [502, 503],
+      [SECTION_IDS.AUDIO_SYSTEM]: [
+        itemIds.AUDIO_SPEAKERS_2,
+        itemIds.AUDIO_MIXER_SQ5,
+        itemIds.AUDIO_SUBWOOFERS_2_KW181,
+        itemIds.AUDIO_MONITOR_SPEAKERS_2_QSC_K12,
+      ],
+      [SECTION_IDS.LIGHTING_SYSTEM]: [
+        itemIds.LIGHT_BACKLIGHTS_RGB_4,
+        itemIds.LIGHT_DMX_512_CONTROLLER,
+        itemIds.LIGHT_FRONT_LIGHTS_AMBER_4,
+        itemIds.ACCESSORY_T_BAR_STANDS_2,
+      ],
+      [SECTION_IDS.MICROPHONE]: [
+        itemIds.MIC_WIRELESS_2,
+        itemIds.MIC_WIRED_1,
+      ],
+      [SECTION_IDS.OTHERS]: [
+        itemIds.OTHER_SPEAKER_STANDS_2,
+        itemIds.OTHER_XLR_CABLES,
+        itemIds.OTHER_CABLE_RAMPS_2,
+        itemIds.OTHER_EXTENSION_CABLES,
+        itemIds.OTHER_AUX_CABLE,
+        itemIds.OTHER_MIC_STAND_1,
+        itemIds.OTHER_LYRIC_STAND_1,
+      ],
+      [SECTION_IDS.CREW_AND_TRANSPORT]: [
+        itemIds.CREW_TECH_3,
+        itemIds.CREW_TRANSPORT_SERVICE,
+      ],
     },
     defaultFormValues: {
       packageOnePrice: '12000',
@@ -189,11 +267,36 @@ export const packageTemplates: PackageTemplate[] = [
       'Beam 295 heads, backlights, front lights, and controller',
     ],
     selectedEquipmentBySection: {
-      1: [101, 102, 103, 104],
-      2: [202, 203, 205, 206, 207],
-      3: [301, 302],
-      4: [401, 402, 403, 404, 405, 406, 407],
-      5: [502, 503],
+      [SECTION_IDS.AUDIO_SYSTEM]: [
+        itemIds.AUDIO_SPEAKERS_2,
+        itemIds.AUDIO_MIXER_SQ5,
+        itemIds.AUDIO_SUBWOOFERS_2_KW181,
+        itemIds.AUDIO_MONITOR_SPEAKERS_2_QSC_K12,
+      ],
+      [SECTION_IDS.LIGHTING_SYSTEM]: [
+        itemIds.LIGHT_BACKLIGHTS_RGB_8,
+        itemIds.LIGHT_DMX_512_CONTROLLER,
+        itemIds.LIGHT_FRONT_LIGHTS_AMBER_8,
+        itemIds.ACCESSORY_T_BAR_STANDS_2,
+        itemIds.LIGHT_MOVING_HEADLIGHTS_2,
+      ],
+      [SECTION_IDS.MICROPHONE]: [
+        itemIds.MIC_WIRELESS_2,
+        itemIds.MIC_WIRED_1,
+      ],
+      [SECTION_IDS.OTHERS]: [
+        itemIds.OTHER_SPEAKER_STANDS_2,
+        itemIds.OTHER_XLR_CABLES,
+        itemIds.OTHER_CABLE_RAMPS_2,
+        itemIds.OTHER_EXTENSION_CABLES,
+        itemIds.OTHER_AUX_CABLE,
+        itemIds.OTHER_MIC_STAND_1,
+        itemIds.OTHER_LYRIC_STAND_1,
+      ],
+      [SECTION_IDS.CREW_AND_TRANSPORT]: [
+        itemIds.CREW_TECH_3,
+        itemIds.CREW_TRANSPORT_SERVICE,
+      ],
     },
     defaultFormValues: {
       packageOnePrice: '15000',
@@ -215,13 +318,51 @@ export const packageTemplates: PackageTemplate[] = [
       'Guitar amps, bass amp, 5 tech crews, and transport service',
     ],
     selectedEquipmentBySection: {
-      1: [101, 102, 105, 106, 107],
-      2: [202, 204, 209, 210],
-      3: [301, 303],
-      4: [401, 402, 403, 404, 405, 408, 407, 409],
-      5: [503, 504],
-      10: [1001, 1002, 1003, 1004, 1005, 1006, 1007],
-      11: [1101, 1102, 1103],
+      [SECTION_IDS.AUDIO_SYSTEM]: [
+        itemIds.AUDIO_SPEAKERS_2,
+        itemIds.AUDIO_MIXER_SQ5,
+        itemIds.AUDIO_MONITOR_SPEAKERS_4_QSC_YAMAHA,
+        itemIds.AUDIO_STAGE_BOX_AR2412,
+        itemIds.AUDIO_SUBWOOFERS_2_KLA181,
+      ],
+      [SECTION_IDS.LIGHTING_SYSTEM]: [
+        itemIds.LIGHT_BACKLIGHTS_RGB_8,
+        itemIds.LIGHT_FRONT_LIGHTS_AMBER_4,
+        itemIds.LIGHT_CONTROLLER_MINIPEARL_1024,
+        itemIds.ACCESSORY_T_BAR_STANDS_4,
+      ],
+      [SECTION_IDS.MICROPHONE]: [
+        itemIds.MIC_WIRELESS_2,
+        itemIds.MIC_WIRED_2,
+      ],
+      [SECTION_IDS.OTHERS]: [
+        itemIds.OTHER_SPEAKER_STANDS_2,
+        itemIds.OTHER_XLR_CABLES,
+        itemIds.OTHER_CABLE_RAMPS_2,
+        itemIds.OTHER_EXTENSION_CABLES,
+        itemIds.OTHER_AUX_CABLE,
+        itemIds.OTHER_MIC_STANDS_3,
+        itemIds.OTHER_LYRIC_STAND_1,
+        itemIds.OTHER_FOG_MACHINE_1,
+      ],
+      [SECTION_IDS.CREW_AND_TRANSPORT]: [
+        itemIds.CREW_TRANSPORT_SERVICE,
+        itemIds.CREW_TECH_5,
+      ],
+      [SECTION_IDS.DRUMS]: [
+        itemIds.DRUMS_DRUMSET,
+        itemIds.DRUMS_CYMBALS,
+        itemIds.DRUMS_KICK_PEDAL,
+        itemIds.DRUMS_KICK_MIC,
+        itemIds.DRUMS_SNARE_MIC,
+        itemIds.DRUMS_TOM_MICS_2,
+        itemIds.DRUMS_OVERHEAD_MIC_1,
+      ],
+      [SECTION_IDS.AMPLIFIERS]: [
+        itemIds.AMP_GUITAR_AMPLIFIERS_2,
+        itemIds.AMP_BASS_AMPLIFIER,
+        itemIds.AMP_GUITAR_MICS_2,
+      ],
     },
     defaultFormValues: {
       packageOnePrice: '25000',
@@ -243,12 +384,40 @@ export const packageTemplates: PackageTemplate[] = [
       '3 tech crews and transport service',
     ],
     selectedEquipmentBySection: {
-      1: [101, 102, 103, 104, 108, 109],
-      2: [209, 211, 212, 213, 214, 215],
-      3: [304, 302],
-      4: [401, 402, 403, 404, 405, 406, 407],
-      5: [502, 503],
-      6: [604],
+      [SECTION_IDS.AUDIO_SYSTEM]: [
+        itemIds.AUDIO_SPEAKERS_2,
+        itemIds.AUDIO_MIXER_SQ5,
+        itemIds.AUDIO_SUBWOOFERS_2_KW181,
+        itemIds.AUDIO_MONITOR_SPEAKERS_2_QSC_K12,
+        itemIds.AUDIO_DELAY_SPEAKERS_2_RCF_915,
+        itemIds.AUDIO_FRONTFILL_SPEAKERS_2_YAMAHA_DXR10,
+      ],
+      [SECTION_IDS.LIGHTING_SYSTEM]: [
+        itemIds.LIGHT_CONTROLLER_MINIPEARL_1024,
+        itemIds.LIGHT_MOVING_HEADS_SET_4_WITH_TRUSSES,
+        itemIds.LIGHT_MOVING_WASH_2,
+        itemIds.LIGHT_PAR_LIGHTS_16,
+        itemIds.LIGHT_FRONTAL_LIGHTS_8,
+        itemIds.EFFECT_HAZE_MACHINE,
+      ],
+      [SECTION_IDS.MICROPHONE]: [
+        itemIds.MIC_WIRELESS_4,
+        itemIds.MIC_WIRED_1,
+      ],
+      [SECTION_IDS.OTHERS]: [
+        itemIds.OTHER_SPEAKER_STANDS_2,
+        itemIds.OTHER_XLR_CABLES,
+        itemIds.OTHER_CABLE_RAMPS_2,
+        itemIds.OTHER_EXTENSION_CABLES,
+        itemIds.OTHER_AUX_CABLE,
+        itemIds.OTHER_MIC_STAND_1,
+        itemIds.OTHER_LYRIC_STAND_1,
+      ],
+      [SECTION_IDS.CREW_AND_TRANSPORT]: [
+        itemIds.CREW_TECH_3,
+        itemIds.CREW_TRANSPORT_SERVICE,
+      ],
+      [SECTION_IDS.ADD_ONS]: [itemIds.ADDON_MOVING_HEADLIGHTS_2_MORE],
     },
     defaultFormValues: {
       packageOnePrice: '27000',
@@ -270,13 +439,53 @@ export const packageTemplates: PackageTemplate[] = [
       'Moving headlights, moving wash, 5 tech crews, and transport service',
     ],
     selectedEquipmentBySection: {
-      1: [101, 102, 105, 106, 107],
-      2: [202, 204, 209, 210, 207, 212],
-      3: [301, 303],
-      4: [401, 402, 403, 404, 405, 408, 407, 409],
-      5: [503, 504],
-      10: [1001, 1002, 1003, 1004, 1005, 1006, 1007],
-      11: [1101, 1102, 1103],
+      [SECTION_IDS.AUDIO_SYSTEM]: [
+        itemIds.AUDIO_SPEAKERS_2,
+        itemIds.AUDIO_MIXER_SQ5,
+        itemIds.AUDIO_MONITOR_SPEAKERS_4_QSC_YAMAHA,
+        itemIds.AUDIO_STAGE_BOX_AR2412,
+        itemIds.AUDIO_SUBWOOFERS_2_KLA181,
+      ],
+      [SECTION_IDS.LIGHTING_SYSTEM]: [
+        itemIds.LIGHT_BACKLIGHTS_RGB_8,
+        itemIds.LIGHT_FRONT_LIGHTS_AMBER_4,
+        itemIds.LIGHT_CONTROLLER_MINIPEARL_1024,
+        itemIds.ACCESSORY_T_BAR_STANDS_4,
+        itemIds.LIGHT_MOVING_HEADLIGHTS_2,
+        itemIds.LIGHT_MOVING_WASH_2,
+      ],
+      [SECTION_IDS.MICROPHONE]: [
+        itemIds.MIC_WIRELESS_2,
+        itemIds.MIC_WIRED_2,
+      ],
+      [SECTION_IDS.OTHERS]: [
+        itemIds.OTHER_SPEAKER_STANDS_2,
+        itemIds.OTHER_XLR_CABLES,
+        itemIds.OTHER_CABLE_RAMPS_2,
+        itemIds.OTHER_EXTENSION_CABLES,
+        itemIds.OTHER_AUX_CABLE,
+        itemIds.OTHER_MIC_STANDS_3,
+        itemIds.OTHER_LYRIC_STAND_1,
+        itemIds.OTHER_FOG_MACHINE_1,
+      ],
+      [SECTION_IDS.CREW_AND_TRANSPORT]: [
+        itemIds.CREW_TRANSPORT_SERVICE,
+        itemIds.CREW_TECH_5,
+      ],
+      [SECTION_IDS.DRUMS]: [
+        itemIds.DRUMS_DRUMSET,
+        itemIds.DRUMS_CYMBALS,
+        itemIds.DRUMS_KICK_PEDAL,
+        itemIds.DRUMS_KICK_MIC,
+        itemIds.DRUMS_SNARE_MIC,
+        itemIds.DRUMS_TOM_MICS_2,
+        itemIds.DRUMS_OVERHEAD_MIC_1,
+      ],
+      [SECTION_IDS.AMPLIFIERS]: [
+        itemIds.AMP_GUITAR_AMPLIFIERS_2,
+        itemIds.AMP_BASS_AMPLIFIER,
+        itemIds.AMP_GUITAR_MICS_2,
+      ],
     },
     defaultFormValues: {
       packageOnePrice: '30000',
@@ -298,10 +507,37 @@ export const packageTemplates: PackageTemplate[] = [
       'Built-in 9x12 LED wall, 16x24 stage, and 6 comm-set units',
     ],
     selectedEquipmentBySection: {
-      1: [101, 102, 105, 106, 110],
-      2: [211, 212, 209, 214, 216, 215],
-      3: [304, 303],
-      4: [401, 402, 403, 404, 405, 408, 407, 410, 411, 412],
+      [SECTION_IDS.AUDIO_SYSTEM]: [
+        itemIds.AUDIO_SPEAKERS_2,
+        itemIds.AUDIO_MIXER_SQ5,
+        itemIds.AUDIO_MONITOR_SPEAKERS_4_QSC_YAMAHA,
+        itemIds.AUDIO_STAGE_BOX_AR2412,
+        itemIds.AUDIO_SUBWOOFERS_4_KLA181,
+      ],
+      [SECTION_IDS.LIGHTING_SYSTEM]: [
+        itemIds.LIGHT_MOVING_HEADS_SET_4_WITH_TRUSSES,
+        itemIds.LIGHT_MOVING_WASH_2,
+        itemIds.LIGHT_CONTROLLER_MINIPEARL_1024,
+        itemIds.LIGHT_FRONTAL_LIGHTS_8,
+        itemIds.LIGHT_BACKDROP_LIGHTS_16,
+        itemIds.EFFECT_HAZE_MACHINE,
+      ],
+      [SECTION_IDS.MICROPHONE]: [
+        itemIds.MIC_WIRELESS_4,
+        itemIds.MIC_WIRED_2,
+      ],
+      [SECTION_IDS.OTHERS]: [
+        itemIds.OTHER_SPEAKER_STANDS_2,
+        itemIds.OTHER_XLR_CABLES,
+        itemIds.OTHER_CABLE_RAMPS_2,
+        itemIds.OTHER_EXTENSION_CABLES,
+        itemIds.OTHER_AUX_CABLE,
+        itemIds.OTHER_MIC_STANDS_3,
+        itemIds.OTHER_LYRIC_STAND_1,
+        itemIds.OTHER_COMM_SET_6,
+        itemIds.OTHER_LED_WALL_9X12,
+        itemIds.OTHER_STAGE_16X24,
+      ],
     },
     defaultFormValues: {
       packageOnePrice: '70000',
@@ -345,3 +581,4 @@ export const createFormValuesForTemplate = (
     ...overrides,
   }
 }
+

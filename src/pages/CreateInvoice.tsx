@@ -10,6 +10,7 @@ import {
   getPackageTemplate,
 } from '../context/invoiceBuilderConfig'
 import { useInvoiceBuilder } from '../context/useInvoiceBuilder'
+import { SECTION_IDS } from '../components/Form/components/list-checker/testData'
 
 const CreateInvoice = () => {
   const { packageId } = useParams()
@@ -52,7 +53,9 @@ const CreateInvoice = () => {
     Partial<Record<keyof InvoiceFormValues, string>>
   >(() => {
     const hasTranspoFee = Boolean(
-      sections.find((section) => section.id === 9)?.equipment[0]?.isChecked,
+      sections.find(
+        (section) => section.id === SECTION_IDS.TRANSPORTATION_FEE,
+      )?.equipment[0]?.isChecked,
     )
 
     return {

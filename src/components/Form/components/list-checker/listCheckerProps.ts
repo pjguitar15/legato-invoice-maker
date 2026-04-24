@@ -24,15 +24,15 @@ export type EquipmentTypes =
   (typeof EquipmentTypes)[keyof typeof EquipmentTypes]
 
 export type ListItemData = {
-  id: number
+  id: string
   isChecked: boolean
   name: string
   type: EquipmentTypes
 }
 
 export type ListProps = ListItemData & {
-  sectionId: number
-  handleCheckClick: (sectionId: number, id: number) => void
+  sectionId: string
+  handleCheckClick: (sectionId: string, id: string) => void
 }
 
 export const equipmentIcons = {
@@ -50,7 +50,7 @@ export const equipmentIcons = {
 }
 
 export type LabelAndEquipmentProps = {
-  id: number
+  id: string
   label: string
   singleSelect?: boolean
   equipment: ListItemData[]
