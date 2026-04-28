@@ -542,8 +542,8 @@ const buildTableBlocks = (rows: TableRow[][]): DocumentBlock[] =>
   rows.map((pageRows, index) => ({
     id: `summary-table-${index + 1}`,
     node: <SummaryTableBlock rows={pageRows} />,
-    gapAfter: index === rows.length - 1 ? 20 : 0,
-    pageBreakAfter: index < rows.length - 1,
+    gapAfter: 0,
+    pageBreakAfter: true,
   }))
 
 const buildDocumentBlocks = ({
