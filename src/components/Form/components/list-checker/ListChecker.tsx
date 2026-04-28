@@ -3,7 +3,7 @@ import List from "./List"
 import { EquipmentTypes, type ListItemData } from "./listCheckerProps"
 import { styles } from '../formStyles'
 import { useInvoiceBuilder } from "../../../../context/useInvoiceBuilder"
-import { SECTION_IDS, createItemId } from './testData'
+import { SECTION_IDS, ITEM_IDS } from './testData'
 
 
 const ListChecker = () => {
@@ -21,9 +21,9 @@ const ListChecker = () => {
     (section) => section.id === SECTION_IDS.LED_WALL_RISER,
   )?.equipment[0]
   const riserPrice =
-    selectedLedWall?.id === createItemId('led-wall-9x14')
+    selectedLedWall?.id === ITEM_IDS.LED_WALL_9X14
       ? 20000
-      : selectedLedWall?.id === createItemId('led-wall-9x12')
+      : selectedLedWall?.id === ITEM_IDS.LED_WALL_9X12
         ? 18000
         : null
 
@@ -94,7 +94,7 @@ const ListChecker = () => {
                         paddingRight: '0.25rem',
                       }}
                     >
-                      {selectedLedWall.id === createItemId('led-wall-9x14')
+                      {selectedLedWall.id === ITEM_IDS.LED_WALL_9X14
                         ? '9x14 ft LED wall base price is P18,000. With riser, it becomes P20,000.'
                         : '9x12 ft LED wall base price is P15,000. Add P3,000 when riser is included.'}
                     </Typography>

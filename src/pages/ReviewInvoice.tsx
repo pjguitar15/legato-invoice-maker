@@ -21,7 +21,7 @@ import {
 import { useInvoiceBuilder } from '../context/useInvoiceBuilder'
 import {
   SECTION_IDS,
-  createItemId,
+  ITEM_IDS,
 } from '../components/Form/components/list-checker/testData'
 import { formatCurrency, formatDisplayDate } from '../utils/invoiceFormatting'
 
@@ -666,14 +666,14 @@ const ReviewInvoice = () => {
 
   const packageTotal = parseAmount(formValues.packageOnePrice)
   const ledWallTotal = ledWallSelection
-    ? ledWallSelection.id === createItemId('led-wall-9x14')
+    ? ledWallSelection.id === ITEM_IDS.LED_WALL_9X14
       ? 18000
-      : ledWallSelection.id === createItemId('led-wall-9x12')
+      : ledWallSelection.id === ITEM_IDS.LED_WALL_9X12
         ? 15000
         : 0
     : 0
   const riserTotal =
-    hasRiser && ledWallSelection?.id === createItemId('led-wall-9x14')
+    hasRiser && ledWallSelection?.id === ITEM_IDS.LED_WALL_9X14
       ? 2000
       : hasRiser && ledWallTotal > 0
         ? 3000
