@@ -102,7 +102,7 @@ export const SAMPLE_OBJECT_ARRAY: LabelAndEquipmentProps[] = [
         name: '1 Digital Stage Box - Allen & Heath AR2412',
       },
       {
-        id: createItemId('audio-subwoofers-2-kla181'),
+        id: createItemId('audio-sub-2-kla181'),
         isChecked: false,
         type: EquipmentTypes.SUBWOOFER,
         name: '2 Subwoofers - QSC KLA181',

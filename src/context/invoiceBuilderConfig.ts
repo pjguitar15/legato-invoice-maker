@@ -323,7 +323,7 @@ export const packageTemplates: PackageTemplate[] = [
         itemIds.AUDIO_MIXER_SQ5,
         itemIds.AUDIO_MONITOR_SPEAKERS_4_QSC_YAMAHA,
         itemIds.AUDIO_STAGE_BOX_AR2412,
-        itemIds.AUDIO_SUBWOOFERS_2_KLA181,
+        itemIds.AUDIO_SUB_2_KLA181,
       ],
       [SECTION_IDS.LIGHTING_SYSTEM]: [
         itemIds.LIGHT_BACKLIGHTS_RGB_8,
@@ -444,7 +444,7 @@ export const packageTemplates: PackageTemplate[] = [
         itemIds.AUDIO_MIXER_SQ5,
         itemIds.AUDIO_MONITOR_SPEAKERS_4_QSC_YAMAHA,
         itemIds.AUDIO_STAGE_BOX_AR2412,
-        itemIds.AUDIO_SUBWOOFERS_2_KLA181,
+        itemIds.AUDIO_SUB_2_KLA181,
       ],
       [SECTION_IDS.LIGHTING_SYSTEM]: [
         itemIds.LIGHT_BACKLIGHTS_RGB_8,
