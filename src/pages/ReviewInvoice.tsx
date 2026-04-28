@@ -6,7 +6,18 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { Box, Button, Divider, Typography } from '@mui/material'
+import {
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  InputAdornment,
+  TextField,
+  Typography,
+} from '@mui/material'
 import { Link as RouterLink, Navigate, useParams } from 'react-router'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
@@ -220,10 +231,11 @@ const DocumentHeaderBlock = ({
   formValues,
   invoiceNumber,
   preparedDate,
+  documentType,
 }: Pick<
   DocumentContentProps,
   'formValues' | 'invoiceNumber' | 'preparedDate'
->) => (
+> & { documentType: 'Invoice' | 'Quotation' }) => (
   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
     <Box
       sx={{
@@ -279,7 +291,7 @@ const DocumentHeaderBlock = ({
           color: '#464854',
         }}
       >
-        Invoice
+        {documentType}
       </Typography>
       <Typography
         sx={{
@@ -290,7 +302,7 @@ const DocumentHeaderBlock = ({
           fontWeight: 700,
         }}
       >
-        INVOICE #{invoiceNumber || '----'}
+        {documentType.toUpperCase()} #{invoiceNumber || '----'}
       </Typography>
     </Box>
 
@@ -550,11 +562,13 @@ const buildDocumentBlocks = ({
   formValues,
   invoiceNumber,
   preparedDate,
+  documentType,
   tableBlocks,
 }: Pick<
   DocumentContentProps,
   'formValues' | 'invoiceNumber' | 'preparedDate'
 > & {
+  documentType: 'Invoice' | 'Quotation'
   tableBlocks: DocumentBlock[]
 }): DocumentBlock[] => {
   const termsBlocks: DocumentBlock[] = [
@@ -579,6 +593,7 @@ const buildDocumentBlocks = ({
           formValues={formValues}
           invoiceNumber={invoiceNumber}
           preparedDate={preparedDate}
+          documentType={documentType}
         />
       ),
       gapAfter: 0,
@@ -609,6 +624,9 @@ const ReviewInvoice = () => {
   const measureBlockRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const measureTableRowRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [isExporting, setIsExporting] = useState(false)
+  const [exportModalOpen, setExportModalOpen] = useState(false)
+  const [exportFilename, setExportFilename] = useState('')
+  const [documentType, setDocumentType] = useState<'Invoice' | 'Quotation'>('Invoice')
   const [measuredBlockHeights, setMeasuredBlockHeights] = useState<
     Record<string, number>
   >({})
@@ -807,9 +825,10 @@ const ReviewInvoice = () => {
         formValues,
         invoiceNumber,
         preparedDate,
+        documentType,
         tableBlocks,
       }),
-    [formValues, invoiceNumber, preparedDate, tableBlocks],
+    [documentType, formValues, invoiceNumber, preparedDate, tableBlocks],
   )
 
   useLayoutEffect(() => {
@@ -901,7 +920,19 @@ const ReviewInvoice = () => {
     return <Navigate to='/' replace />
   }
 
-  const handleExportPdf = async () => {
+  const buildDefaultFilename = () => {
+    const preparedForPart = sanitizeFilenamePart(formValues.clientName, 'client')
+    const exportDatePart = preparedDate.replaceAll('-', '')
+    return `legato-sounds-and-lights-invoice-${preparedForPart}-${invoiceNumber || 'draft'}-${exportDatePart}`
+  }
+
+  const handleExportClick = () => {
+    if (isExporting) return
+    setExportFilename(buildDefaultFilename())
+    setExportModalOpen(true)
+  }
+
+  const handleExportPdf = async (filename: string) => {
     if (exportPageRefs.current.length === 0 || isExporting) return
 
     try {
@@ -941,15 +972,7 @@ const ReviewInvoice = () => {
         )
       }
 
-      const preparedForPart = sanitizeFilenamePart(
-        formValues.clientName,
-        'client',
-      )
-      const exportDatePart = preparedDate.replaceAll('-', '')
-
-      pdf.save(
-        `legato-sounds-and-lights-invoice-${preparedForPart}-${invoiceNumber || 'draft'}-${exportDatePart}.pdf`,
-      )
+      pdf.save(`${filename.trim() || buildDefaultFilename()}.pdf`)
     } finally {
       setIsExporting(false)
     }
@@ -979,6 +1002,14 @@ const ReviewInvoice = () => {
           },
         }}
       >
+        <Button
+          variant='outlined'
+          onClick={() =>
+            setDocumentType((t) => (t === 'Invoice' ? 'Quotation' : 'Invoice'))
+          }
+        >
+          Switch to {documentType === 'Invoice' ? 'Quotation' : 'Invoice'}
+        </Button>
         <Button
           component={RouterLink}
           to='/'
@@ -1043,7 +1074,7 @@ const ReviewInvoice = () => {
         </Button>
         <Button
           variant='contained'
-          onClick={handleExportPdf}
+          onClick={handleExportClick}
           disabled={isExporting}
           aria-label={isExporting ? 'Exporting PDF' : 'Export as PDF'}
           sx={{
@@ -1213,6 +1244,53 @@ const ReviewInvoice = () => {
           </Box>
         ))}
       </Box>
+      <Dialog
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        fullWidth
+        maxWidth='sm'
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>Export as PDF</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontSize: 13.5, color: '#667085', mb: 2 }}>
+            You can rename the file before saving, or keep the default name.
+          </Typography>
+          <TextField
+            fullWidth
+            label='File name'
+            value={exportFilename}
+            onChange={(e) => setExportFilename(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                setExportModalOpen(false)
+                handleExportPdf(exportFilename)
+              }
+            }}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position='end'>.pdf</InputAdornment>
+                ),
+              },
+            }}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+          <Button variant='outlined' onClick={() => setExportModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant='contained'
+            onClick={() => {
+              setExportModalOpen(false)
+              handleExportPdf(exportFilename)
+            }}
+          >
+            Export
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
