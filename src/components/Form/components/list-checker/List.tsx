@@ -8,23 +8,35 @@ const styles = {
     background: '#ffffff',
     display: 'flex',
     justifyContent: 'space-between',
-    padding: '1rem 1.2rem',
+    alignItems: 'center',
+    padding: '0.85rem 1rem',
+    transition: 'background-color 160ms ease',
+    '&:hover': {
+      background: '#f8fafc',
+    },
   },
   content: {
     display: 'flex',
     alignItems: 'center',
-    gap: 1,
+    gap: 1.1,
+    minWidth: 0,
+    color: '#303746',
   },
   label: {
     fontSize: 14,
     fontFamily: 'Montserrat',
-    fontWeight: 500,
+    fontWeight: 650,
+    lineHeight: 1.35,
+    color: '#242b38',
   },
   action: {
     display: 'flex',
     alignItems: 'center',
     cursor: 'pointer',
     gap: '8px',
+    color: '#171c26',
+    padding: '0.2rem',
+    marginLeft: '0.75rem',
   },
 } as const
 

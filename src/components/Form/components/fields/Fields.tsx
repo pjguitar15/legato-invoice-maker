@@ -66,9 +66,10 @@ const Fields = ({ errors }: FieldsProps) => {
           <Box
             sx={{
               border: '1px solid #d8dce4',
-              borderRadius: '12px',
+              borderRadius: '8px',
               padding: '0.5rem 0.75rem 0.65rem',
               background: '#ffffff',
+              boxShadow: '0 1px 2px rgba(16, 24, 40, 0.035)',
             }}
           >
             <FormControlLabel
@@ -118,9 +119,10 @@ const Fields = ({ errors }: FieldsProps) => {
           <Box
             sx={{
               border: '1px solid #d8dce4',
-              borderRadius: '12px',
+              borderRadius: '8px',
               padding: '0.5rem 0.75rem 0.75rem',
               background: '#ffffff',
+              boxShadow: '0 1px 2px rgba(16, 24, 40, 0.035)',
             }}
           >
             <FormControlLabel

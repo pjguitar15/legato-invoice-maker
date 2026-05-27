@@ -1,5 +1,6 @@
-import { Box, Typography } from '@mui/material'
-import { useNavigate } from 'react-router'
+import { Box, Button, Typography } from '@mui/material'
+import { Link as RouterLink, useNavigate } from 'react-router'
+import { FiArrowLeft } from 'react-icons/fi'
 import heroImage from '../assets/hero.png'
 import {
   CUSTOM_PACKAGE_ID,
@@ -215,6 +216,27 @@ const PackageTemplateSelection = () => {
     <Box sx={styles.root}>
       <Box sx={styles.shell}>
         <Box sx={{ padding: '1rem 0 1.25rem' }}>
+          <Button
+            component={RouterLink}
+            to='/'
+            variant='text'
+            startIcon={<FiArrowLeft />}
+            sx={{
+              padding: 0,
+              minWidth: 0,
+              marginBottom: '1rem',
+              fontSize: 13,
+              fontWeight: 800,
+              color: '#4f5b6d',
+              textTransform: 'none',
+              '&:hover': {
+                background: 'transparent',
+                color: '#151821',
+              },
+            }}
+          >
+            Business manager
+          </Button>
           <Typography
             sx={{
               fontSize: { xs: 30, sm: 36 },

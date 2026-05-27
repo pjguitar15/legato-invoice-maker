@@ -30,7 +30,17 @@ const ListChecker = () => {
   return (
     <Box sx={styles.root}>
       {visibleSections.map((item) => (
-        <Box key={item.id} sx={{ padding: '0 12px' }}>
+        <Box
+          key={item.id}
+          sx={{
+            margin: '0 1rem',
+            padding: { xs: '1rem', sm: '1.1rem 1.2rem' },
+            border: '1px solid #dfe3ea',
+            borderRadius: '8px',
+            background: '#ffffff',
+            boxShadow: '0 1px 2px rgba(16, 24, 40, 0.035)',
+          }}
+        >
           <Typography sx={styles.heading}>{item.label}</Typography>
 
           <Box sx={styles.list}>
@@ -56,9 +66,9 @@ const ListChecker = () => {
                   sx={{
                     marginTop: '0.75rem',
                     border: '1px solid #d8dce4',
-                    borderRadius: '12px',
+                    borderRadius: '8px',
                     padding: '0.5rem 0.75rem 0.65rem',
-                    background: '#ffffff',
+                    background: '#fbfcfd',
                   }}
                 >
                   <FormControlLabel

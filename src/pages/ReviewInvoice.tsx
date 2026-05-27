@@ -1012,7 +1012,7 @@ const ReviewInvoice = () => {
         </Button>
         <Button
           component={RouterLink}
-          to='/'
+          to='/invoice-templates'
           variant='outlined'
           aria-label='Templates'
           sx={{
