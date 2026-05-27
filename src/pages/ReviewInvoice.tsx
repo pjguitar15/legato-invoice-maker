@@ -949,7 +949,7 @@ const ReviewInvoice = () => {
         }
 
         const canvas = await html2canvas(pageRef, {
-          scale: 2,
+          scale: 1.5,
           useCORS: true,
           backgroundColor: '#ffffff',
           width: pageRef.scrollWidth,
@@ -963,8 +963,8 @@ const ReviewInvoice = () => {
         }
 
         pdf.addImage(
-          canvas.toDataURL('image/png'),
-          'PNG',
+          canvas.toDataURL('image/jpeg', 0.86),
+          'JPEG',
           0,
           0,
           pageWidth,
