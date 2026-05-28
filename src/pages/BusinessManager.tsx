@@ -182,11 +182,11 @@ const savedViews: Array<{ key: SavedView; label: string }> = [
 
 const managerThemes = {
   light: {
-    page: '#f5f7fb',
+    page: '#f6f7f9',
     pageGlow:
-      'radial-gradient(circle at 16% 0%, rgba(20, 184, 166, 0.16), transparent 32%), radial-gradient(circle at 88% 8%, rgba(245, 158, 11, 0.14), transparent 30%)',
+      'linear-gradient(180deg, rgba(15, 23, 42, 0.035), transparent 260px)',
     panel: '#ffffff',
-    panelSoft: '#f8fafc',
+    panelSoft: '#f4f6f8',
     elevated: '#ffffff',
     text: '#111827',
     muted: '#667085',
@@ -200,12 +200,12 @@ const managerThemes = {
     accent2: '#f59e0b',
     accent3: '#4f46e5',
     field: '#ffffff',
-    shadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
+    shadow: '0 12px 32px rgba(15, 23, 42, 0.07)',
   },
   dark: {
     page: '#080b12',
     pageGlow:
-      'radial-gradient(circle at 16% 0%, rgba(20, 184, 166, 0.2), transparent 34%), radial-gradient(circle at 84% 8%, rgba(79, 70, 229, 0.18), transparent 32%)',
+      'linear-gradient(180deg, rgba(45, 212, 191, 0.08), transparent 280px)',
     panel: '#111827',
     panelSoft: '#0d1420',
     elevated: '#151e2d',
@@ -272,7 +272,7 @@ const buildMuiTheme = (mode: ColorMode) => {
       },
     },
     shape: {
-      borderRadius: 12,
+      borderRadius: 6,
     },
     typography: {
       fontFamily:
@@ -294,7 +294,7 @@ const buildMuiTheme = (mode: ColorMode) => {
       MuiButton: {
         styleOverrides: {
           root: {
-            borderRadius: 10,
+            borderRadius: 8,
             boxShadow: 'none',
           },
         },
@@ -302,6 +302,7 @@ const buildMuiTheme = (mode: ColorMode) => {
       MuiCard: {
         styleOverrides: {
           root: {
+            borderRadius: 8,
             border: `1px solid ${tokens.border}`,
             boxShadow: tokens.shadow,
           },
@@ -320,7 +321,15 @@ const buildMuiTheme = (mode: ColorMode) => {
       MuiPaper: {
         styleOverrides: {
           root: {
+            borderRadius: 8,
             backgroundImage: 'none',
+          },
+        },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            borderRadius: 8,
           },
         },
       },
@@ -332,6 +341,7 @@ const buildMuiTheme = (mode: ColorMode) => {
       MuiChip: {
         styleOverrides: {
           root: {
+            borderRadius: 6,
             fontWeight: 620,
           },
         },
@@ -641,8 +651,8 @@ const DashboardMetric = ({
   <Card
     sx={{
       position: 'relative',
-      borderRadius: 3,
-      background: 'linear-gradient(180deg, var(--panel), var(--panelSoft))',
+      borderRadius: '8px',
+      background: 'var(--panel)',
       minWidth: 0,
       overflow: 'hidden',
       '&::before': {
@@ -696,7 +706,7 @@ const AnalyticsCard = ({
   <Card
     sx={{
       background: 'var(--panel)',
-      borderRadius: 3,
+      borderRadius: '8px',
       minWidth: 0,
     }}
   >
@@ -965,7 +975,7 @@ const EventDialog = ({
             background: theme.panel,
             color: theme.text,
             border: `1px solid ${theme.border}`,
-            borderRadius: '16px',
+            borderRadius: '8px',
           },
         },
       }}
@@ -977,7 +987,7 @@ const EventDialog = ({
           '& .MuiOutlinedInput-root': {
             background: theme.field,
             color: theme.text,
-            borderRadius: '10px',
+            borderRadius: '8px',
             '& fieldset': {
               borderColor: theme.border,
             },
@@ -1593,7 +1603,7 @@ const topLocations = useMemo(() => {
         '& .MuiOutlinedInput-root': {
           background: 'var(--field)',
           color: 'var(--text)',
-          borderRadius: '10px',
+          borderRadius: '8px',
           '& fieldset': {
             borderColor: 'var(--border)',
           },
@@ -1625,9 +1635,9 @@ const topLocations = useMemo(() => {
             gap: '1rem',
             alignItems: { md: 'flex-end' },
             marginBottom: 2.5,
-            borderRadius: 4,
-            background:
-              'linear-gradient(135deg, color-mix(in srgb, var(--panel) 82%, var(--accent) 18%), var(--panel))',
+            borderRadius: '8px',
+            background: 'var(--panel)',
+            borderLeft: '4px solid var(--accent)',
             padding: { xs: 2.5, md: 3.25 },
           }}
         >
@@ -1638,7 +1648,7 @@ const topLocations = useMemo(() => {
                 fontWeight: 650,
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
-                color: 'var(--accent)',
+                color: 'var(--muted)',
               }}
             >
               Legato Operations
@@ -1657,7 +1667,7 @@ const topLocations = useMemo(() => {
               Event Business Tracker
             </Typography>
             <Typography sx={{ color: 'var(--muted)', marginTop: '0.55rem', maxWidth: 620 }}>
-              Track events, booking status, revenue, packages, and the working calendar from one local-state dashboard.
+              Track events, booking status, revenue, packages, and the working calendar from one API-backed operations dashboard.
             </Typography>
           </Box>
 
@@ -1671,8 +1681,8 @@ const topLocations = useMemo(() => {
               sx={{
                 borderColor: 'var(--border)',
                 color: 'var(--text)',
-                background: 'color-mix(in srgb, var(--panel) 78%, transparent)',
-                borderRadius: '10px',
+                background: 'var(--panel)',
+                borderRadius: '8px',
                 fontWeight: 650,
                 textTransform: 'none',
                 minHeight: 42,
@@ -1692,8 +1702,8 @@ const topLocations = useMemo(() => {
               sx={{
                 borderColor: 'var(--border)',
                 color: 'var(--text)',
-                background: 'color-mix(in srgb, var(--panel) 78%, transparent)',
-                borderRadius: '10px',
+                background: 'var(--panel)',
+                borderRadius: '8px',
                 fontWeight: 620,
                 textTransform: 'none',
                 minHeight: 42,
@@ -1711,15 +1721,15 @@ const topLocations = useMemo(() => {
               onClick={openCreateDialog}
               disabled={eventsLoading}
               sx={{
-                background: 'linear-gradient(135deg, var(--accent), var(--accent3))',
+                background: 'var(--primary)',
                 color: 'var(--primaryText)',
-                borderRadius: '10px',
+                borderRadius: '8px',
                 boxShadow: 'none',
                 fontWeight: 650,
                 textTransform: 'none',
                 minHeight: 42,
                 '&:hover': {
-                  background: 'linear-gradient(135deg, var(--primaryHover), var(--accent3))',
+                  background: 'var(--primaryHover)',
                   boxShadow: 'none',
                 },
               }}
@@ -1780,7 +1790,7 @@ const topLocations = useMemo(() => {
             flexWrap: 'wrap',
             gap: 0.75,
             background: 'var(--panel)',
-            borderRadius: 3,
+            borderRadius: '8px',
             padding: 0.75,
             marginBottom: 1.5,
             alignItems: 'center',
@@ -1806,7 +1816,7 @@ const topLocations = useMemo(() => {
               startIcon={<Icon />}
               sx={{
                 flex: { xs: '1 1 100%', sm: '0 0 auto' },
-                borderRadius: 2.5,
+                borderRadius: '8px',
                 color: viewMode === value ? 'white' : 'text.secondary',
                 background: viewMode === value ? 'primary.main' : 'transparent',
                 fontWeight: 650,
@@ -1822,7 +1832,7 @@ const topLocations = useMemo(() => {
           <Button
             onClick={(event) => setPropertiesAnchor(event.currentTarget)}
             sx={{
-              borderRadius: '10px',
+              borderRadius: '8px',
               color: 'var(--muted)',
               fontWeight: 620,
               textTransform: 'none',
@@ -1833,7 +1843,7 @@ const topLocations = useMemo(() => {
           </Button>
           <Button
             sx={{
-              borderRadius: '10px',
+              borderRadius: '8px',
               color: 'var(--muted)',
               fontWeight: 620,
               textTransform: 'none',
@@ -1857,7 +1867,7 @@ const topLocations = useMemo(() => {
                 background: 'var(--panel)',
                 color: 'var(--text)',
                 border: '1px solid var(--border)',
-                borderRadius: '12px',
+                borderRadius: '8px',
                 padding: '0.35rem',
               },
             },
@@ -1896,7 +1906,7 @@ const topLocations = useMemo(() => {
             component={Card}
             sx={{
               background: 'var(--panel)',
-              borderRadius: 3,
+              borderRadius: '8px',
               overflow: 'hidden',
             }}
           >
@@ -1921,7 +1931,7 @@ const topLocations = useMemo(() => {
                     setSavedView(item.key)
                     setPage(0)
                   }}
-                  sx={{ borderRadius: 2, px: 0.5 }}
+                  sx={{ borderRadius: '8px', px: 0.5 }}
                 />
               ))}
             </Box>
@@ -2248,7 +2258,7 @@ const topLocations = useMemo(() => {
               gap: 2,
             }}
           >
-            <Box component={Card} sx={{ background: 'var(--panel)', borderRadius: 3, overflow: 'hidden' }}>
+            <Box component={Card} sx={{ background: 'var(--panel)', borderRadius: '8px', overflow: 'hidden' }}>
               <Box
                 sx={{
                   display: 'flex',
@@ -2362,7 +2372,7 @@ const topLocations = useMemo(() => {
               </Box>
             </Box>
 
-            <Box component={Card} sx={{ background: 'var(--panel)', borderRadius: 3, padding: { xs: 2, md: 2.5 } }}>
+            <Box component={Card} sx={{ background: 'var(--panel)', borderRadius: '8px', padding: { xs: 2, md: 2.5 } }}>
               <Typography sx={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>This month</Typography>
               <Typography sx={{ fontSize: 13, color: 'var(--muted)', marginTop: '0.25rem' }}>
                 {selectedMonthEvents.length} events scheduled
@@ -2385,7 +2395,7 @@ const topLocations = useMemo(() => {
                       borderBottom: '1px solid var(--borderSoft)',
                       paddingBottom: 1.25,
                       cursor: 'pointer',
-                      borderRadius: 1.5,
+                      borderRadius: '8px',
                       outline: 'none',
                       '&:hover, &:focus-visible': {
                         background: 'var(--panelSoft)',
@@ -2414,7 +2424,7 @@ const topLocations = useMemo(() => {
                 alignItems: 'center',
                 marginBottom: 2,
                 background: 'var(--panel)',
-                borderRadius: 3,
+                borderRadius: '8px',
                 padding: { xs: 1.5, md: 2 },
               }}
             >
@@ -2486,7 +2496,7 @@ const topLocations = useMemo(() => {
                       sx={{
                         height: `${Math.max((item.revenue / maxMonthlyRevenue) * 220, 8)}px`,
                         background: 'linear-gradient(180deg, var(--accent), var(--accent3))',
-                        borderRadius: '9px 9px 3px 3px',
+                        borderRadius: '8px 8px 3px 3px',
                         boxShadow: '0 10px 22px color-mix(in srgb, var(--accent) 25%, transparent)',
                       }}
                     />
@@ -2643,7 +2653,7 @@ const topLocations = useMemo(() => {
                     sx={{
                       background: 'var(--panelSoft)',
                       border: '1px solid var(--borderSoft)',
-                      borderRadius: '12px',
+                      borderRadius: '8px',
                       padding: '0.8rem',
                     }}
                   >
@@ -2666,7 +2676,7 @@ const topLocations = useMemo(() => {
             component={Card}
             sx={{
               background: 'var(--panel)',
-              borderRadius: 3,
+              borderRadius: '8px',
               overflow: 'hidden',
             }}
           >
@@ -2785,7 +2795,7 @@ const topLocations = useMemo(() => {
               background: theme.panel,
               color: theme.text,
               border: `1px solid ${theme.border}`,
-              borderRadius: '18px',
+              borderRadius: '8px',
             },
           },
         }}
@@ -2840,7 +2850,7 @@ const topLocations = useMemo(() => {
                     sx={{
                       background: theme.panelSoft,
                       border: `1px solid ${theme.borderSoft}`,
-                      borderRadius: 2,
+                      borderRadius: '8px',
                       p: 1.5,
                     }}
                   >
@@ -2857,7 +2867,7 @@ const topLocations = useMemo(() => {
                     gridColumn: '1 / -1',
                     background: theme.panelSoft,
                     border: `1px solid ${theme.borderSoft}`,
-                    borderRadius: 2,
+                    borderRadius: '8px',
                     p: 1.5,
                   }}
                 >
