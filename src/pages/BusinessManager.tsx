@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useDeferredValue, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import {
   Box,
   Button,
@@ -16,6 +16,7 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  Skeleton,
   Stack,
   Table,
   TableBody,
@@ -97,6 +98,33 @@ type GroupSummary = {
   topType: string
   topLocation: string
   topClient: string
+}
+
+type EventListParams = {
+  eventTypeFilter: string
+  packageFilter: string
+  page: number
+  query: string
+  rowsPerPage: number
+  savedView: SavedView
+  showUnscheduled: boolean
+  sortDirection: SortDirection
+  sortField: SortField
+  statusFilter: string
+  yearFilter: string
+}
+
+type EventListMeta = {
+  total: number
+  limit: number
+  skip: number
+}
+
+type EventFacets = {
+  eventTypes: string[]
+  packages: string[]
+  statuses: string[]
+  years: string[]
 }
 
 const tableColumns: Array<{ key: ColumnKey; label: string }> = [
@@ -186,6 +214,26 @@ const managerThemes = {
     shadow: '0 18px 52px rgba(0, 0, 0, 0.34)',
   },
 } as const
+
+type ManagerTheme = (typeof managerThemes)[ColorMode]
+type EventFormFieldName = keyof EventFormValues
+
+const eventFormFields: Array<{ name: EventFormFieldName; label: string }> = [
+  { name: 'name', label: 'Event name' },
+  { name: 'clientName', label: 'Client name' },
+  { name: 'eventDate', label: 'Event date' },
+  { name: 'eventTime', label: 'Event time' },
+  { name: 'eventType', label: 'Event type' },
+  { name: 'packageName', label: 'Package' },
+  { name: 'agreedAmount', label: 'Agreed amount' },
+  { name: 'amountPaid', label: 'Amount paid' },
+  { name: 'paymentDueDate', label: 'Payment due date' },
+  { name: 'pipelineStage', label: 'Pipeline stage' },
+  { name: 'bookingSource', label: 'Booking source' },
+  { name: 'status', label: 'Status' },
+  { name: 'location', label: 'Location' },
+  { name: 'notes', label: 'Notes' },
+]
 
 const buildMuiTheme = (mode: ColorMode) => {
   const tokens = managerThemes[mode]
@@ -390,15 +438,58 @@ const readApiError = async (response: Response) => {
   }
 }
 
-const fetchEventsFromApi = async (signal?: AbortSignal) => {
-  const response = await fetch('/api/events?limit=2000', { signal })
+const fetchEventsFromApi = async (params: EventListParams, signal?: AbortSignal) => {
+  const searchParams = new URLSearchParams({
+    limit: String(params.rowsPerPage),
+    skip: String(params.page * params.rowsPerPage),
+    savedView: params.savedView,
+    scheduled: String(!params.showUnscheduled),
+    sortDirection: params.sortDirection,
+    sortField: params.sortField,
+  })
+
+  if (params.query.trim()) searchParams.set('q', params.query.trim())
+  if (params.yearFilter !== 'All') searchParams.set('year', params.yearFilter)
+  if (params.statusFilter !== 'All') searchParams.set('status', params.statusFilter)
+  if (params.packageFilter !== 'All') searchParams.set('packageName', params.packageFilter)
+  if (params.eventTypeFilter !== 'All') searchParams.set('eventType', params.eventTypeFilter)
+
+  const response = await fetch(`/api/events?${searchParams.toString()}`, { signal })
 
   if (!response.ok) {
     throw new Error(await readApiError(response))
   }
 
-  const body = (await response.json()) as { data?: Partial<EventRecord>[] }
-  return (body.data ?? []).map(normalizeEventRecord)
+  const body = (await response.json()) as {
+    data?: Partial<EventRecord>[]
+    meta?: Partial<EventListMeta>
+  }
+
+  return {
+    data: (body.data ?? []).map(normalizeEventRecord),
+    meta: {
+      total: body.meta?.total ?? 0,
+      limit: body.meta?.limit ?? params.rowsPerPage,
+      skip: body.meta?.skip ?? params.page * params.rowsPerPage,
+    },
+  }
+}
+
+const fetchEventFacetsFromApi = async (signal?: AbortSignal) => {
+  const response = await fetch('/api/events/facets', { signal })
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response))
+  }
+
+  const body = (await response.json()) as { data?: Partial<EventFacets> }
+
+  return {
+    eventTypes: body.data?.eventTypes ?? [],
+    packages: body.data?.packages ?? [],
+    statuses: body.data?.statuses ?? [],
+    years: body.data?.years ?? [],
+  }
 }
 
 const saveEventToApi = async (event: EventRecord, editingId?: string) => {
@@ -711,10 +802,277 @@ const DonutChart = ({
   )
 }
 
+const TableSkeletonLine = ({
+  width = '100%',
+  height = 18,
+}: {
+  width?: number | string
+  height?: number
+}) => (
+  <Skeleton
+    variant='rounded'
+    animation='wave'
+    width={width}
+    height={height}
+    sx={{
+      borderRadius: 1,
+      bgcolor: 'color-mix(in srgb, var(--muted) 14%, transparent)',
+    }}
+  />
+)
+
+const EventTableSkeletonRows = ({
+  rowCount,
+  visibleColumns,
+}: {
+  rowCount: number
+  visibleColumns: Record<ColumnKey, boolean>
+}) => (
+  <>
+    {Array.from({ length: rowCount }, (_, rowIndex) => (
+      <TableRow
+        key={`event-skeleton-${rowIndex}`}
+        sx={{
+          '& td': {
+            borderColor: 'var(--borderSoft)',
+            py: 1.3,
+            px: 1.75,
+          },
+        }}
+      >
+        {visibleColumns.event ? (
+          <TableCell sx={{ width: 190, maxWidth: 220 }}>
+            <Stack spacing={0.75}>
+              <TableSkeletonLine width='82%' height={17} />
+              <TableSkeletonLine width='58%' height={14} />
+            </Stack>
+          </TableCell>
+        ) : null}
+        {visibleColumns.date ? (
+          <TableCell sx={{ whiteSpace: 'nowrap' }}>
+            <Stack spacing={0.75}>
+              <TableSkeletonLine width={92} height={16} />
+              <TableSkeletonLine width={58} height={14} />
+            </Stack>
+          </TableCell>
+        ) : null}
+        {visibleColumns.client ? (
+          <TableCell sx={{ width: 150, maxWidth: 170 }}>
+            <TableSkeletonLine width='72%' />
+          </TableCell>
+        ) : null}
+        {visibleColumns.location ? (
+          <TableCell sx={{ width: 190, maxWidth: 220 }}>
+            <TableSkeletonLine width='78%' />
+          </TableCell>
+        ) : null}
+        {visibleColumns.type ? (
+          <TableCell sx={{ width: 120, maxWidth: 130 }}>
+            <TableSkeletonLine width='68%' />
+          </TableCell>
+        ) : null}
+        {visibleColumns.package ? (
+          <TableCell sx={{ width: 150, maxWidth: 160 }}>
+            <TableSkeletonLine width='76%' />
+          </TableCell>
+        ) : null}
+        {visibleColumns.amount ? (
+          <TableCell>
+            <TableSkeletonLine width={74} />
+          </TableCell>
+        ) : null}
+        {visibleColumns.balance ? (
+          <TableCell>
+            <TableSkeletonLine width={70} />
+          </TableCell>
+        ) : null}
+        {visibleColumns.pipeline ? (
+          <TableCell sx={{ minWidth: 130 }}>
+            <TableSkeletonLine width={104} height={24} />
+          </TableCell>
+        ) : null}
+        {visibleColumns.source ? (
+          <TableCell sx={{ width: 130, maxWidth: 150 }}>
+            <TableSkeletonLine width='70%' />
+          </TableCell>
+        ) : null}
+        {visibleColumns.status ? (
+          <TableCell>
+            <TableSkeletonLine width={86} height={24} />
+          </TableCell>
+        ) : null}
+        <TableCell align='right'>
+          <Stack direction='row' spacing={1} sx={{ justifyContent: 'flex-end' }}>
+            <TableSkeletonLine width={28} height={28} />
+            <TableSkeletonLine width={28} height={28} />
+          </Stack>
+        </TableCell>
+      </TableRow>
+    ))}
+  </>
+)
+
+const EventDialog = ({
+  editingEvent,
+  savingEvent,
+  theme,
+  onClose,
+  onSave,
+}: {
+  editingEvent: EventRecord | null
+  savingEvent: boolean
+  theme: ManagerTheme
+  onClose: () => void
+  onSave: (values: EventFormValues) => Promise<void>
+}) => {
+  const initialValues = editingEvent ? toFormValues(editingEvent) : emptyForm
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+    const values = eventFormFields.reduce((current, { name }) => {
+      current[name] = String(formData.get(name) ?? '')
+      return current
+    }, {} as EventFormValues)
+
+    await onSave(values)
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      fullWidth
+      maxWidth='md'
+      slotProps={{
+        paper: {
+          sx: {
+            background: theme.panel,
+            color: theme.text,
+            border: `1px solid ${theme.border}`,
+            borderRadius: '16px',
+          },
+        },
+      }}
+    >
+      <Box
+        component='form'
+        onSubmit={handleSubmit}
+        sx={{
+          '& .MuiOutlinedInput-root': {
+            background: theme.field,
+            color: theme.text,
+            borderRadius: '10px',
+            '& fieldset': {
+              borderColor: theme.border,
+            },
+            '&:hover fieldset, &.Mui-focused fieldset': {
+              borderColor: theme.accent,
+            },
+          },
+          '& .MuiInputLabel-root, & .MuiSelect-icon': {
+            color: theme.muted,
+          },
+          '& input, & textarea': {
+            color: theme.text,
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, color: theme.text }}>
+          {editingEvent ? 'Edit event' : 'Add event'}
+        </DialogTitle>
+        <DialogContent>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+              gap: 1.5,
+              paddingTop: 1,
+            }}
+          >
+            {eventFormFields.map(({ name, label }) => (
+              <TextField
+                key={name}
+                name={name}
+                label={label}
+                type={
+                  name === 'eventDate' || name === 'paymentDueDate'
+                    ? 'date'
+                    : name === 'agreedAmount' || name === 'amountPaid'
+                      ? 'number'
+                      : 'text'
+                }
+                select={name === 'pipelineStage' || name === 'bookingSource'}
+                defaultValue={initialValues[name]}
+                required={name === 'name' || name === 'eventDate'}
+                multiline={name === 'notes'}
+                minRows={name === 'notes' ? 3 : undefined}
+                sx={{ gridColumn: name === 'location' || name === 'notes' ? '1 / -1' : undefined }}
+                slotProps={name === 'eventDate' || name === 'paymentDueDate' ? { inputLabel: { shrink: true } } : undefined}
+              >
+                {name === 'pipelineStage'
+                  ? pipelineStages.map((stage) => (
+                      <MenuItem key={stage} value={stage}>
+                        {stage}
+                      </MenuItem>
+                    ))
+                  : null}
+                {name === 'bookingSource'
+                  ? bookingSources.map((source) => (
+                      <MenuItem key={source} value={source}>
+                        {source}
+                      </MenuItem>
+                    ))
+                  : null}
+              </TextField>
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ padding: { xs: 2, md: '1.25rem 1.75rem 1.5rem' } }}>
+          <Button
+            onClick={onClose}
+            variant='outlined'
+            sx={{
+              borderColor: theme.border,
+              color: theme.text,
+              textTransform: 'none',
+              fontWeight: 620,
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            type='submit'
+            variant='contained'
+            disabled={savingEvent}
+            sx={{
+              background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent3})`,
+              boxShadow: 'none',
+              textTransform: 'none',
+              fontWeight: 650,
+            }}
+          >
+            {savingEvent ? 'Saving...' : 'Save event'}
+          </Button>
+        </DialogActions>
+      </Box>
+    </Dialog>
+  )
+}
+
 const BusinessManager = () => {
   const [events, setEvents] = useState<EventRecord[]>([])
   const [eventsLoading, setEventsLoading] = useState(true)
   const [eventsError, setEventsError] = useState('')
+  const [eventsTotal, setEventsTotal] = useState(0)
+  const [eventsRevision, setEventsRevision] = useState(0)
+  const [facetsRevision, setFacetsRevision] = useState(0)
+  const [eventFacets, setEventFacets] = useState<EventFacets>({
+    eventTypes: [],
+    packages: [],
+    statuses: [],
+    years: [],
+  })
   const [savingEvent, setSavingEvent] = useState(false)
   const [deletingEventId, setDeletingEventId] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('events')
@@ -745,12 +1103,40 @@ const BusinessManager = () => {
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(25)
   const [editingEvent, setEditingEvent] = useState<EventRecord | null>(null)
-  const [formValues, setFormValues] = useState<EventFormValues>(emptyForm)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [calendarEventDetails, setCalendarEventDetails] = useState<EventRecord | null>(null)
   const [colorMode, setColorMode] = useState<ColorMode>('light')
   const theme = managerThemes[colorMode]
   const muiTheme = useMemo(() => buildMuiTheme(colorMode), [colorMode])
+  const deferredQuery = useDeferredValue(query)
+  const eventListParams = useMemo<EventListParams>(
+    () => ({
+      eventTypeFilter,
+      packageFilter,
+      page,
+      query: deferredQuery,
+      rowsPerPage,
+      savedView,
+      showUnscheduled,
+      sortDirection,
+      sortField,
+      statusFilter,
+      yearFilter,
+    }),
+    [
+      eventTypeFilter,
+      packageFilter,
+      page,
+      deferredQuery,
+      rowsPerPage,
+      savedView,
+      showUnscheduled,
+      sortDirection,
+      sortField,
+      statusFilter,
+      yearFilter,
+    ],
+  )
 
   useEffect(() => {
     const controller = new AbortController()
@@ -758,9 +1144,10 @@ const BusinessManager = () => {
     setEventsLoading(true)
     setEventsError('')
 
-    fetchEventsFromApi(controller.signal)
-      .then((nextEvents) => {
-        setEvents(nextEvents)
+    fetchEventsFromApi(eventListParams, controller.signal)
+      .then(({ data, meta }) => {
+        setEvents(data)
+        setEventsTotal(meta.total)
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return
@@ -773,122 +1160,53 @@ const BusinessManager = () => {
       })
 
     return () => controller.abort()
-  }, [])
+  }, [eventListParams, eventsRevision])
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    fetchEventFacetsFromApi(controller.signal)
+      .then(setEventFacets)
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setEventsError(error instanceof Error ? error.message : 'Failed to load event filters')
+      })
+
+    return () => controller.abort()
+  }, [facetsRevision])
 
   const statusOptions = useMemo(
-    () => ['All', ...Array.from(new Set(events.map((event) => event.status).filter(Boolean))).sort()],
-    [events],
+    () => ['All', ...eventFacets.statuses],
+    [eventFacets.statuses],
   )
 
   const packageOptions = useMemo(
-    () => [
-      'All',
-      ...Array.from(new Set(events.map((event) => event.packageName).filter(Boolean))).sort(),
-    ],
-    [events],
+    () => ['All', ...eventFacets.packages],
+    [eventFacets.packages],
   )
 
   const eventTypeOptions = useMemo(
-    () => [
-      'All',
-      ...Array.from(new Set(events.map((event) => event.eventType).filter(Boolean))).sort(),
-    ],
-    [events],
+    () => ['All', ...eventFacets.eventTypes],
+    [eventFacets.eventTypes],
   )
 
   const yearOptions = useMemo(
-    () => [
-      'All',
-      ...Array.from(
-        new Set(
-          events
-            .map((event) => getEventYear(event))
-            .filter((year) => year !== 'Unscheduled'),
-        ),
-      ).sort((a, b) => b.localeCompare(a)),
-    ],
-    [events],
+    () => ['All', ...eventFacets.years],
+    [eventFacets.years],
   )
 
   const visibleTableColumns = tableColumns.filter(
     (column) => visibleColumns[column.key],
   )
 
-  const filteredEvents = useMemo(() => {
-    const search = query.trim().toLowerCase()
-
-    return events
-      .filter((event) => (showUnscheduled ? true : hasSchedule(event)))
-      .filter((event) => {
-        if (savedView === 'upcoming') return isUpcomingWithin(event, 30)
-        if (savedView === 'unpaid') return !isCancelled(event.status) && getBalance(event) > 0
-        if (savedView === 'needsData') return needsCriticalData(event)
-        if (savedView === 'completed') return isDone(event.status)
-        return true
-      })
-      .filter((event) =>
-        yearFilter === 'All' ? true : getEventYear(event) === yearFilter,
-      )
-      .filter((event) =>
-        statusFilter === 'All' ? true : event.status === statusFilter,
-      )
-      .filter((event) =>
-        packageFilter === 'All' ? true : event.packageName === packageFilter,
-      )
-      .filter((event) =>
-        eventTypeFilter === 'All' ? true : event.eventType === eventTypeFilter,
-      )
-      .filter((event) => {
-        if (!search) return true
-
-        return [
-          event.name,
-          event.clientName,
-          event.location,
-          event.eventType,
-          event.packageName,
-          event.pipelineStage,
-          event.bookingSource,
-          event.status,
-          event.notes,
-        ]
-          .join(' ')
-          .toLowerCase()
-          .includes(search)
-      })
-      .sort((a, b) => {
-        const direction = sortDirection === 'asc' ? 1 : -1
-
-        if (sortField === 'agreedAmount') {
-          return ((a.agreedAmount ?? 0) - (b.agreedAmount ?? 0)) * direction
-        }
-
-        return String(a[sortField] || '').localeCompare(String(b[sortField] || '')) * direction
-      })
-  }, [
-    events,
-    eventTypeFilter,
-    packageFilter,
-    query,
-    savedView,
-    showUnscheduled,
-    sortDirection,
-    sortField,
-    statusFilter,
-    yearFilter,
-  ])
-
-  const lastPage = Math.max(Math.ceil(filteredEvents.length / rowsPerPage) - 1, 0)
+  const lastPage = Math.max(Math.ceil(eventsTotal / rowsPerPage) - 1, 0)
   const safePage = Math.min(page, lastPage)
 
-  const paginatedEvents = useMemo(
-    () =>
-      filteredEvents.slice(
-        safePage * rowsPerPage,
-        safePage * rowsPerPage + rowsPerPage,
-      ),
-    [filteredEvents, rowsPerPage, safePage],
-  )
+  useEffect(() => {
+    if (page > lastPage) {
+      setPage(lastPage)
+    }
+  }, [lastPage, page])
 
   const analyticsEvents = useMemo(
     () =>
@@ -1141,13 +1459,11 @@ const topLocations = useMemo(() => {
 
   const openCreateDialog = () => {
     setEditingEvent(null)
-    setFormValues(emptyForm)
     setDialogOpen(true)
   }
 
   const openEditDialog = (event: EventRecord) => {
     setEditingEvent(event)
-    setFormValues(toFormValues(event))
     setDialogOpen(true)
   }
 
@@ -1157,8 +1473,9 @@ const topLocations = useMemo(() => {
 
     try {
       await deleteEventFromApi(eventId)
-      setEvents((current) => current.filter((event) => event.id !== eventId))
       setCalendarEventDetails((current) => (current?.id === eventId ? null : current))
+      setEventsRevision((current) => current + 1)
+      setFacetsRevision((current) => current + 1)
     } catch (error) {
       setEventsError(error instanceof Error ? error.message : 'Failed to delete event')
     } finally {
@@ -1166,28 +1483,23 @@ const topLocations = useMemo(() => {
     }
   }
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-
+  const handleSaveEvent = async (values: EventFormValues) => {
     const nextEvent: EventRecord = {
-      ...formValues,
+      ...values,
       id: editingEvent?.id ?? `evt-${Date.now()}`,
-      agreedAmount: parseAmountInput(formValues.agreedAmount),
-      amountPaid: parseAmountInput(formValues.amountPaid),
+      agreedAmount: parseAmountInput(values.agreedAmount),
+      amountPaid: parseAmountInput(values.amountPaid),
     }
 
     setSavingEvent(true)
     setEventsError('')
 
     try {
-      const savedEvent = await saveEventToApi(nextEvent, editingEvent?.id)
-      setEvents((current) =>
-        editingEvent
-          ? current.map((item) => (item.id === editingEvent.id ? savedEvent : item))
-          : [savedEvent, ...current],
-      )
+      await saveEventToApi(nextEvent, editingEvent?.id)
       setDialogOpen(false)
       setEditingEvent(null)
+      setEventsRevision((current) => current + 1)
+      setFacetsRevision((current) => current + 1)
     } catch (error) {
       setEventsError(error instanceof Error ? error.message : 'Failed to save event')
     } finally {
@@ -1485,7 +1797,7 @@ const topLocations = useMemo(() => {
               ? `${clientSummaries.length} clients`
               : viewMode === 'venues'
                 ? `${venueSummaries.length} venues`
-                : `${filteredEvents.length} rows`}
+                : `${eventsTotal} rows`}
           </Button>
         </Box>
         <Menu
@@ -1724,20 +2036,19 @@ const topLocations = useMemo(() => {
                 </TableHead>
                 <TableBody>
                   {eventsLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={visibleTableColumns.length + 1} align='center' sx={{ py: 5, color: 'text.secondary' }}>
-                        Loading events from MongoDB...
-                      </TableCell>
-                    </TableRow>
+                    <EventTableSkeletonRows
+                      rowCount={rowsPerPage}
+                      visibleColumns={visibleColumns}
+                    />
                   ) : null}
-                  {!eventsLoading && paginatedEvents.length === 0 ? (
+                  {!eventsLoading && events.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={visibleTableColumns.length + 1} align='center' sx={{ py: 5, color: 'text.secondary' }}>
                         No events match this view.
                       </TableCell>
                     </TableRow>
                   ) : null}
-                  {paginatedEvents.map((event) => {
+                  {events.map((event) => {
                     const tone = statusTone(event.status)
 
                     return (
@@ -1859,7 +2170,7 @@ const topLocations = useMemo(() => {
             </TableContainer>
             <TablePagination
               component='div'
-              count={filteredEvents.length}
+              count={eventsTotal}
               page={safePage}
               onPageChange={(_, nextPage) => setPage(nextPage)}
               rowsPerPage={rowsPerPage}
@@ -2535,145 +2846,16 @@ const topLocations = useMemo(() => {
         ) : null}
       </Dialog>
 
-      <Dialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        fullWidth
-        maxWidth='md'
-        slotProps={{
-          paper: {
-            sx: {
-              background: theme.panel,
-              color: theme.text,
-              border: `1px solid ${theme.border}`,
-              borderRadius: '16px',
-            },
-          },
-        }}
-      >
-        <Box
-          component='form'
-          onSubmit={handleSubmit}
-          sx={{
-            '& .MuiOutlinedInput-root': {
-              background: theme.field,
-              color: theme.text,
-              borderRadius: '10px',
-              '& fieldset': {
-                borderColor: theme.border,
-              },
-              '&:hover fieldset, &.Mui-focused fieldset': {
-                borderColor: theme.accent,
-              },
-            },
-            '& .MuiInputLabel-root, & .MuiSelect-icon': {
-              color: theme.muted,
-            },
-            '& input, & textarea': {
-              color: theme.text,
-            },
-          }}
-        >
-          <DialogTitle sx={{ fontWeight: 700, color: theme.text }}>
-            {editingEvent ? 'Edit event' : 'Add event'}
-          </DialogTitle>
-          <DialogContent>
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
-                gap: 1.5,
-                paddingTop: 1,
-              }}
-            >
-              {[
-                ['name', 'Event name'],
-                ['clientName', 'Client name'],
-                ['eventDate', 'Event date'],
-                ['eventTime', 'Event time'],
-                ['eventType', 'Event type'],
-                ['packageName', 'Package'],
-                ['agreedAmount', 'Agreed amount'],
-                ['amountPaid', 'Amount paid'],
-                ['paymentDueDate', 'Payment due date'],
-                ['pipelineStage', 'Pipeline stage'],
-                ['bookingSource', 'Booking source'],
-                ['status', 'Status'],
-                ['location', 'Location'],
-                ['notes', 'Notes'],
-              ].map(([name, label]) => (
-                <TextField
-                  key={name}
-                  name={name}
-                  label={label}
-                  type={
-                    name === 'eventDate' || name === 'paymentDueDate'
-                      ? 'date'
-                      : name === 'agreedAmount' || name === 'amountPaid'
-                        ? 'number'
-                        : 'text'
-                  }
-                  select={name === 'pipelineStage' || name === 'bookingSource'}
-                  value={formValues[name as keyof EventFormValues]}
-                  onChange={(event) =>
-                    setFormValues((current) => ({
-                      ...current,
-                      [name]: event.target.value,
-                    }))
-                  }
-                  required={name === 'name' || name === 'eventDate'}
-                  multiline={name === 'notes'}
-                  minRows={name === 'notes' ? 3 : undefined}
-                  sx={{ gridColumn: name === 'location' || name === 'notes' ? '1 / -1' : undefined }}
-                  slotProps={name === 'eventDate' || name === 'paymentDueDate' ? { inputLabel: { shrink: true } } : undefined}
-                >
-                  {name === 'pipelineStage'
-                    ? pipelineStages.map((stage) => (
-                        <MenuItem key={stage} value={stage}>
-                          {stage}
-                        </MenuItem>
-                      ))
-                    : null}
-                  {name === 'bookingSource'
-                    ? bookingSources.map((source) => (
-                        <MenuItem key={source} value={source}>
-                          {source}
-                        </MenuItem>
-                      ))
-                    : null}
-                </TextField>
-              ))}
-            </Box>
-          </DialogContent>
-          <DialogActions sx={{ padding: { xs: 2, md: '1.25rem 1.75rem 1.5rem' } }}>
-            <Button
-              onClick={() => setDialogOpen(false)}
-              variant='outlined'
-              sx={{
-                borderColor: theme.border,
-                color: theme.text,
-                textTransform: 'none',
-                fontWeight: 620,
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type='submit'
-              variant='contained'
-              disabled={savingEvent}
-              sx={{
-                background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent3})`,
-                boxShadow: 'none',
-                textTransform: 'none',
-                fontWeight: 650,
-              }}
-            >
-              {savingEvent ? 'Saving...' : 'Save event'}
-            </Button>
-          </DialogActions>
-        </Box>
-      </Dialog>
+      {dialogOpen ? (
+        <EventDialog
+          key={editingEvent?.id ?? 'new-event'}
+          editingEvent={editingEvent}
+          savingEvent={savingEvent}
+          theme={theme}
+          onClose={() => setDialogOpen(false)}
+          onSave={handleSaveEvent}
+        />
+      ) : null}
       </Box>
     </ThemeProvider>
   )
