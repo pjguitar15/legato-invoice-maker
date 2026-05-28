@@ -5,9 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:api": "node --watch server/index.js",
-    "start:api": "node server/index.js",
-    "db:seed": "node server/seed.js",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -17,12 +14,8 @@
     "@emotion/styled": "^11.14.1",
     "@mui/material": "^9.0.0",
     "@tailwindcss/vite": "^4.2.2",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
-    "mongodb": "^7.2.0",
     "nanoid": "^5.1.9",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
