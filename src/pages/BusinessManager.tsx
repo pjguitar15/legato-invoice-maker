@@ -127,6 +127,16 @@ type EventFacets = {
   years: string[]
 }
 
+type EventSummary = {
+  activeCount: number
+  bookedValue: number
+  needsDataCount: number
+  outstandingBalance: number
+  scheduledCount: number
+  unpaidCount: number
+  upcoming30Count: number
+}
+
 const tableColumns: Array<{ key: ColumnKey; label: string }> = [
   { key: 'event', label: 'Event' },
   { key: 'date', label: 'Date' },
@@ -165,7 +175,7 @@ const bookingSources = [
 const savedViews: Array<{ key: SavedView; label: string }> = [
   { key: 'all', label: 'All scheduled' },
   { key: 'upcoming', label: 'Upcoming 30 days' },
-  { key: 'unpaid', label: 'Unpaid balances' },
+  { key: 'unpaid', label: 'Has balance' },
   { key: 'needsData', label: 'Needs data' },
   { key: 'completed', label: 'Completed' },
 ]
@@ -492,6 +502,29 @@ const fetchEventFacetsFromApi = async (signal?: AbortSignal) => {
   }
 }
 
+const fetchEventSummaryFromApi = async (yearFilter: string, signal?: AbortSignal) => {
+  const searchParams = new URLSearchParams()
+  if (yearFilter !== 'All') searchParams.set('year', yearFilter)
+
+  const response = await fetch(`/api/events/summary?${searchParams.toString()}`, { signal })
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response))
+  }
+
+  const body = (await response.json()) as { data?: Partial<EventSummary> }
+
+  return {
+    activeCount: body.data?.activeCount ?? 0,
+    bookedValue: body.data?.bookedValue ?? 0,
+    needsDataCount: body.data?.needsDataCount ?? 0,
+    outstandingBalance: body.data?.outstandingBalance ?? 0,
+    scheduledCount: body.data?.scheduledCount ?? 0,
+    unpaidCount: body.data?.unpaidCount ?? 0,
+    upcoming30Count: body.data?.upcoming30Count ?? 0,
+  }
+}
+
 const saveEventToApi = async (event: EventRecord, editingId?: string) => {
   const response = await fetch(editingId ? `/api/events/${editingId}` : '/api/events', {
     method: editingId ? 'PUT' : 'POST',
@@ -538,24 +571,6 @@ const hasSchedule = (event: EventRecord) =>
 
 const getBalance = (event: EventRecord) =>
   Math.max((event.agreedAmount ?? 0) - (event.amountPaid ?? 0), 0)
-
-const isUpcomingWithin = (event: EventRecord, days: number) => {
-  if (!hasSchedule(event) || isCancelled(event.status)) return false
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const target = new Date(`${event.eventDate}T00:00:00`)
-  const diff = target.getTime() - today.getTime()
-  return diff >= 0 && diff <= days * 24 * 60 * 60 * 1000
-}
-
-const needsCriticalData = (event: EventRecord) =>
-  !event.clientName ||
-  !event.location ||
-  !event.eventType ||
-  !event.packageName ||
-  !hasSchedule(event) ||
-  event.agreedAmount == null
 
 const getEventYear = (event: EventRecord) =>
   event.eventDate ? event.eventDate.slice(0, 4) : 'Unscheduled'
@@ -1073,6 +1088,15 @@ const BusinessManager = () => {
     statuses: [],
     years: [],
   })
+  const [eventSummary, setEventSummary] = useState<EventSummary>({
+    activeCount: 0,
+    bookedValue: 0,
+    needsDataCount: 0,
+    outstandingBalance: 0,
+    scheduledCount: 0,
+    unpaidCount: 0,
+    upcoming30Count: 0,
+  })
   const [savingEvent, setSavingEvent] = useState(false)
   const [deletingEventId, setDeletingEventId] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('events')
@@ -1175,6 +1199,19 @@ const BusinessManager = () => {
     return () => controller.abort()
   }, [facetsRevision])
 
+  useEffect(() => {
+    const controller = new AbortController()
+
+    fetchEventSummaryFromApi(yearFilter, controller.signal)
+      .then(setEventSummary)
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setEventsError(error instanceof Error ? error.message : 'Failed to load event summary')
+      })
+
+    return () => controller.abort()
+  }, [eventsRevision, yearFilter])
+
   const statusOptions = useMemo(
     () => ['All', ...eventFacets.statuses],
     [eventFacets.statuses],
@@ -1219,16 +1256,6 @@ const BusinessManager = () => {
   )
   const activeEvents = analyticsEvents.filter((event) => !isCancelled(event.status))
   const doneEvents = analyticsEvents.filter((event) => isDone(event.status))
-  const activeRevenue = activeEvents.reduce(
-    (sum, event) => sum + (event.agreedAmount ?? 0),
-    0,
-  )
-  const unpaidBalance = activeEvents.reduce(
-    (sum, event) => sum + getBalance(event),
-    0,
-  )
-  const upcoming30Events = events.filter((event) => isUpcomingWithin(event, 30))
-  const needsDataEvents = events.filter(needsCriticalData)
   const completedRevenue = doneEvents.reduce(
     (sum, event) => sum + (event.agreedAmount ?? 0),
     0,
@@ -1720,10 +1747,30 @@ const topLocations = useMemo(() => {
             marginBottom: 2,
           }}
         >
-          <DashboardMetric label='Active pipeline' value={peso.format(activeRevenue)} detail={`${activeEvents.length} non-cancelled scheduled events`} accent='var(--accent)' />
-          <DashboardMetric label='Unpaid balance' value={peso.format(unpaidBalance)} detail='Estimated receivables from active events' accent='#f43f5e' />
-          <DashboardMetric label='Upcoming 30 days' value={String(upcoming30Events.length)} detail='Scheduled active events needing prep' accent='var(--accent2)' />
-          <DashboardMetric label='Needs data' value={String(needsDataEvents.length)} detail='Missing amount, schedule, client, type, package, or venue' accent='var(--accent3)' />
+          <DashboardMetric
+            label='Booked value'
+            value={peso.format(eventSummary.bookedValue)}
+            detail={`${eventSummary.activeCount} non-cancelled scheduled events${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
+            accent='var(--accent)'
+          />
+          <DashboardMetric
+            label='Still collectible'
+            value={peso.format(eventSummary.outstandingBalance)}
+            detail={`${eventSummary.unpaidCount} events have remaining balance; blank paid amounts count as unpaid`}
+            accent='#f43f5e'
+          />
+          <DashboardMetric
+            label='Due in 30 days'
+            value={String(eventSummary.upcoming30Count)}
+            detail='Non-cancelled scheduled events from today through the next 30 days'
+            accent='var(--accent2)'
+          />
+          <DashboardMetric
+            label='Needs cleanup'
+            value={String(eventSummary.needsDataCount)}
+            detail='Missing amount, schedule, client, type, package, or venue'
+            accent='var(--accent3)'
+          />
         </Box>
 
         <Box
