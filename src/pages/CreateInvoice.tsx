@@ -129,9 +129,9 @@ const CreateInvoice = () => {
   return (
     <Box
       sx={{
-        background: '#f6f7f9',
+        background: '#080b12',
         minHeight: '100vh',
-        color: '#171c26',
+        color: '#e8edf5',
       }}
     >
       <Box
@@ -159,10 +159,10 @@ const CreateInvoice = () => {
               fontSize: 13,
               fontWeight: 700,
               textTransform: 'none',
-              color: '#4f5b6d',
+              color: '#8a9ab5',
               '&:hover': {
                 background: 'transparent',
-                color: '#171c26',
+                color: '#e8edf5',
               },
             }}
           >
@@ -170,11 +170,11 @@ const CreateInvoice = () => {
           </Button>
           <Box
             sx={{
-              border: '1px solid #dfe3ea',
+              border: '1px solid #263244',
               borderRadius: '8px',
-              background: '#ffffff',
+              background: '#161b25',
               padding: { xs: '1.1rem', sm: '1.35rem 1.5rem' },
-              boxShadow: '0 1px 2px rgba(16, 24, 40, 0.04)',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.32)',
             }}
           >
             <Typography
@@ -183,7 +183,7 @@ const CreateInvoice = () => {
                 fontWeight: 800,
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
-                color: '#7b8190',
+                color: '#8a9ab5',
               }}
             >
               Package Template
@@ -194,7 +194,7 @@ const CreateInvoice = () => {
                 fontSize: { xs: 28, sm: 34 },
                 lineHeight: 1.08,
                 fontWeight: 800,
-                color: '#151922',
+                color: '#e8edf5',
                 marginTop: '0.45rem',
                 letterSpacing: 0,
               }}
@@ -206,7 +206,7 @@ const CreateInvoice = () => {
                 maxWidth: 620,
                 fontSize: 14.5,
                 lineHeight: 1.65,
-                color: '#5e6573',
+                color: '#8a9ab5',
                 marginTop: '0.65rem',
               }}
             >
@@ -220,9 +220,9 @@ const CreateInvoice = () => {
                 gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
                 gap: '1px',
                 overflow: 'hidden',
-                border: '1px solid #e6e9ef',
+                border: '1px solid #263244',
                 borderRadius: '8px',
-                background: '#e6e9ef',
+                background: '#263244',
                 marginTop: '1.1rem',
               }}
             >
@@ -234,7 +234,7 @@ const CreateInvoice = () => {
                 <Box
                   key={label}
                   sx={{
-                    background: '#fbfcfd',
+                    background: '#111620',
                     padding: '0.75rem 0.85rem',
                     minWidth: 0,
                   }}
@@ -243,7 +243,7 @@ const CreateInvoice = () => {
                     sx={{
                       fontSize: 11,
                       fontWeight: 700,
-                      color: '#7b8190',
+                      color: '#8a9ab5',
                       textTransform: 'uppercase',
                       letterSpacing: '0.06em',
                     }}
@@ -255,7 +255,7 @@ const CreateInvoice = () => {
                     sx={{
                       fontSize: 14,
                       fontWeight: 700,
-                      color: '#242b38',
+                      color: '#e8edf5',
                       marginTop: '0.25rem',
                     }}
                   >
@@ -283,10 +283,10 @@ const CreateInvoice = () => {
             padding: { xs: '0.85rem 1rem', sm: '1rem 0 0' },
             gap: '0.75rem',
             background: {
-              xs: 'rgba(246, 247, 249, 0.94)',
-              sm: 'linear-gradient(rgba(246, 247, 249, 0.92), #f6f7f9)',
+              xs: 'rgba(8, 11, 18, 0.94)',
+              sm: 'linear-gradient(rgba(8, 11, 18, 0.92), #080b12)',
             },
-            borderTop: { xs: '1px solid #dfe3ea', sm: 'none' },
+            borderTop: { xs: '1px solid #263244', sm: 'none' },
             backdropFilter: { xs: 'blur(10px)', sm: 'none' },
           }}
         >
@@ -296,8 +296,8 @@ const CreateInvoice = () => {
             variant='outlined'
             fullWidth
             sx={{
-              borderColor: '#ccd3dd',
-              color: '#344054',
+              borderColor: '#263244',
+              color: '#c8d4e8',
               fontWeight: 800,
               textTransform: 'none',
               borderRadius: '8px',
@@ -311,15 +311,15 @@ const CreateInvoice = () => {
             fullWidth
             onClick={handleReviewInvoice}
             sx={{
-              background: '#171c26',
-              color: '#ffffff',
+              background: '#2dd4bf',
+              color: '#080b12',
               fontWeight: 800,
               textTransform: 'none',
               borderRadius: '8px',
               minHeight: 46,
               boxShadow: 'none',
               '&:hover': {
-                background: '#2a3140',
+                background: '#5eead4',
                 boxShadow: 'none',
               },
             }}

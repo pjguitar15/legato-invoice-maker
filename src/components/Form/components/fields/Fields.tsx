@@ -65,11 +65,11 @@ const Fields = ({ errors }: FieldsProps) => {
         <Box sx={styles.fieldContainer}>
           <Box
             sx={{
-              border: '1px solid #d8dce4',
+              border: '1px solid #263244',
               borderRadius: '8px',
               padding: '0.5rem 0.75rem 0.65rem',
-              background: '#ffffff',
-              boxShadow: '0 1px 2px rgba(16, 24, 40, 0.035)',
+              background: '#161b25',
+              boxShadow: 'none',
             }}
           >
             <FormControlLabel
@@ -89,7 +89,7 @@ const Fields = ({ errors }: FieldsProps) => {
                 '& .MuiFormControlLabel-label': {
                   fontSize: 14,
                   fontWeight: 600,
-                  color: '#2f3746',
+                  color: '#c8d4e8',
                 },
               }}
               labelPlacement='start'
@@ -100,7 +100,7 @@ const Fields = ({ errors }: FieldsProps) => {
                 sx={{
                   fontSize: 12.5,
                   lineHeight: 1.45,
-                  color: '#667085',
+                  color: '#8a9ab5',
                   marginTop: '0.2rem',
                   paddingRight: '0.25rem',
                 }}
@@ -142,7 +142,7 @@ const Fields = ({ errors }: FieldsProps) => {
                 '& .MuiFormControlLabel-label': {
                   fontSize: 14,
                   fontWeight: 600,
-                  color: '#2f3746',
+                  color: '#c8d4e8',
                 },
               }}
               labelPlacement='start'

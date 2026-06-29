@@ -12,7 +12,7 @@ import { useInvoiceBuilder } from '../context/useInvoiceBuilder'
 const styles = {
   root: {
     minHeight: '100vh',
-    background: '#ffffff',
+    background: '#080b12',
     padding: '1rem',
   },
   shell: {
@@ -227,11 +227,11 @@ const PackageTemplateSelection = () => {
               marginBottom: '1rem',
               fontSize: 13,
               fontWeight: 800,
-              color: '#4f5b6d',
+              color: '#8a9ab5',
               textTransform: 'none',
               '&:hover': {
                 background: 'transparent',
-                color: '#151821',
+                color: '#e8edf5',
               },
             }}
           >
@@ -242,7 +242,7 @@ const PackageTemplateSelection = () => {
               fontSize: { xs: 30, sm: 36 },
               lineHeight: 1,
               fontWeight: 800,
-              color: '#151821',
+              color: '#e8edf5',
             }}
           >
             Select a template
@@ -253,7 +253,7 @@ const PackageTemplateSelection = () => {
               fontSize: 14,
               lineHeight: 1.4,
               fontWeight: 700,
-              color: '#5f6b7b',
+              color: '#8a9ab5',
               marginTop: '0.65rem',
               display: 'inline-flex',
               cursor: 'pointer',

@@ -13,48 +13,51 @@ export const styles = {
     marginBottom: '0.7rem',
     fontFamily: 'Montserrat',
     fontWeight: 800,
-    color: '#667085',
+    color: '#8a9ab5',
   },
   list: {
     display: 'flex',
     flexDirection: 'column',
     gap: '1px',
-    border: '1px solid #e2e6ee',
+    border: '1px solid #263244',
     borderRadius: '8px',
     overflow: 'hidden',
-    background: '#e2e6ee',
+    background: '#263244',
   },
   fieldContainer: {
     padding: '0 1rem',
   },
   field: {
-    background: '#ffffff',
+    background: '#111620',
     width: '100%',
     '& .MuiOutlinedInput-root': {
       borderRadius: '8px',
       fontWeight: 600,
-      color: '#242b38',
+      color: '#e8edf5',
       '& fieldset': {
-        borderColor: '#d8dde7',
+        borderColor: '#263244',
       },
       '&:hover fieldset': {
-        borderColor: '#aeb7c6',
+        borderColor: '#3d5068',
       },
       '&.Mui-focused fieldset': {
-        borderColor: '#171c26',
+        borderColor: '#2dd4bf',
         borderWidth: '1px',
       },
     },
     '& .MuiInputLabel-root': {
-      color: '#667085',
+      color: '#8a9ab5',
       fontWeight: 700,
     },
     '& .MuiInputLabel-root.Mui-focused': {
-      color: '#171c26',
+      color: '#2dd4bf',
     },
     '& .MuiFormHelperText-root': {
       marginLeft: 0,
       fontWeight: 700,
+    },
+    '& input': {
+      colorScheme: 'dark',
     },
   }
 } as const

@@ -298,6 +298,59 @@ export const packageTemplates: PackageTemplate[] = [
     },
   },
   {
+    id: '20k-sounds-and-lights-with-sub-and-monitors',
+    name: '20K Sounds and Lights with Sub and Monitors',
+    cardPrice: '20K',
+    priceLabel: '20K only',
+    heroTitle: 'Sounds and Lights',
+    heroAccent: 'With Sub and Monitors',
+    description:
+      'Full audio setup with subwoofers, dual monitor speakers, moving heads, wash lights, microphones, and complete event support.',
+    highlights: [
+      '2 powered speakers, SQ5 mixer, 2 subwoofers, QSC K12 and Yamaha DXR10 monitors',
+      '2 wireless mics and 1 wired mic',
+      '8 RGB backlights, 4 amber frontal lights, 2 moving headlights, and 2 moving wash',
+      '3 tech crews and transport service',
+    ],
+    selectedEquipmentBySection: {
+      [SECTION_IDS.AUDIO_SYSTEM]: [
+        ITEM_IDS.AUDIO_SPEAKERS_2,
+        ITEM_IDS.AUDIO_MIXER_SQ5,
+        ITEM_IDS.AUDIO_SUBWOOFERS_2_KW181,
+        ITEM_IDS.AUDIO_MONITOR_SPEAKERS_2_QSC_K12,
+        ITEM_IDS.AUDIO_MONITOR_SPEAKERS_2_YAMAHA_DXR10,
+      ],
+      [SECTION_IDS.LIGHTING_SYSTEM]: [
+        ITEM_IDS.LIGHT_BACKLIGHTS_RGB_8,
+        ITEM_IDS.LIGHT_CONTROLLER_MINIPEARL_1024,
+        ITEM_IDS.LIGHT_FRONT_LIGHTS_AMBER_4,
+        ITEM_IDS.ACCESSORY_T_BAR_STANDS_2,
+        ITEM_IDS.LIGHT_MOVING_HEADLIGHTS_2,
+        ITEM_IDS.LIGHT_MOVING_WASH_2,
+      ],
+      [SECTION_IDS.MICROPHONE]: [
+        ITEM_IDS.MIC_WIRELESS_2,
+        ITEM_IDS.MIC_WIRED_1,
+      ],
+      [SECTION_IDS.OTHERS]: [
+        ITEM_IDS.OTHER_SPEAKER_STANDS_2,
+        ITEM_IDS.OTHER_XLR_CABLES,
+        ITEM_IDS.OTHER_CABLE_RAMPS_2,
+        ITEM_IDS.OTHER_EXTENSION_CABLES,
+        ITEM_IDS.OTHER_AUX_CABLE,
+        ITEM_IDS.OTHER_MIC_STAND_1,
+        ITEM_IDS.OTHER_LYRIC_STAND_1,
+      ],
+      [SECTION_IDS.CREW_AND_TRANSPORT]: [
+        ITEM_IDS.CREW_TECH_3,
+        ITEM_IDS.CREW_TRANSPORT_SERVICE,
+      ],
+    },
+    defaultFormValues: {
+      packageOnePrice: '20000',
+    },
+  },
+  {
     id: '25k-sounds-and-lights-with-full-band-setup',
     name: '25K Sounds and Lights with Full Band Setup',
     cardPrice: '25K',

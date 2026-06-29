@@ -35,10 +35,10 @@ const ListChecker = () => {
           sx={{
             margin: '0 1rem',
             padding: { xs: '1rem', sm: '1.1rem 1.2rem' },
-            border: '1px solid #dfe3ea',
+            border: '1px solid #263244',
             borderRadius: '8px',
-            background: '#ffffff',
-            boxShadow: '0 1px 2px rgba(16, 24, 40, 0.035)',
+            background: '#161b25',
+            boxShadow: 'none',
           }}
         >
           <Typography sx={styles.heading}>{item.label}</Typography>
@@ -65,10 +65,10 @@ const ListChecker = () => {
                 <Box
                   sx={{
                     marginTop: '0.75rem',
-                    border: '1px solid #d8dce4',
+                    border: '1px solid #263244',
                     borderRadius: '8px',
                     padding: '0.5rem 0.75rem 0.65rem',
-                    background: '#fbfcfd',
+                    background: '#111620',
                   }}
                 >
                   <FormControlLabel
@@ -88,7 +88,7 @@ const ListChecker = () => {
                       '& .MuiFormControlLabel-label': {
                         fontSize: 14,
                         fontWeight: 600,
-                        color: '#2f3746',
+                        color: '#c8d4e8',
                       },
                     }}
                     labelPlacement='start'
@@ -99,7 +99,7 @@ const ListChecker = () => {
                       sx={{
                         fontSize: 12.5,
                         lineHeight: 1.45,
-                        color: '#667085',
+                        color: '#8a9ab5',
                         marginTop: '0.2rem',
                         paddingRight: '0.25rem',
                       }}

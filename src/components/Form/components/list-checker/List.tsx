@@ -5,14 +5,14 @@ import { memo } from 'react'
 
 const styles = {
   row: {
-    background: '#ffffff',
+    background: '#161b25',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '0.85rem 1rem',
     transition: 'background-color 160ms ease',
     '&:hover': {
-      background: '#f8fafc',
+      background: '#1d2535',
     },
   },
   content: {
@@ -20,21 +20,21 @@ const styles = {
     alignItems: 'center',
     gap: 1.1,
     minWidth: 0,
-    color: '#303746',
+    color: '#8a9ab5',
   },
   label: {
     fontSize: 14,
     fontFamily: 'Montserrat',
     fontWeight: 650,
     lineHeight: 1.35,
-    color: '#242b38',
+    color: '#c8d4e8',
   },
   action: {
     display: 'flex',
     alignItems: 'center',
     cursor: 'pointer',
     gap: '8px',
-    color: '#171c26',
+    color: '#2dd4bf',
     padding: '0.2rem',
     marginLeft: '0.75rem',
   },

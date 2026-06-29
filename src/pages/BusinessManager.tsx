@@ -26,13 +26,17 @@ import {
   TablePagination,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material'
 import { alpha, createTheme, ThemeProvider } from '@mui/material/styles'
-import { Link as RouterLink } from 'react-router'
+import { Link as RouterLink, useNavigate } from 'react-router'
 import {
   FiBarChart2,
   FiCalendar,
+  FiCheckCircle,
+  FiCircle,
+  FiLogOut,
   FiMapPin,
   FiUsers,
   FiEdit3,
@@ -102,6 +106,7 @@ type GroupSummary = {
 
 type EventListParams = {
   eventTypeFilter: string
+  hideDone: boolean
   packageFilter: string
   page: number
   query: string
@@ -130,11 +135,15 @@ type EventFacets = {
 type EventSummary = {
   activeCount: number
   bookedValue: number
-  needsDataCount: number
-  outstandingBalance: number
   scheduledCount: number
-  unpaidCount: number
-  upcoming30Count: number
+  currentMonthRevenue: number
+  topClient: string
+  topClientRevenue: number
+  averageMonthlyRevenue: number
+  strongestMonth: string
+  strongestMonthRevenue: number
+  weakestMonth: string
+  weakestMonthRevenue: number
 }
 
 const tableColumns: Array<{ key: ColumnKey; label: string }> = [
@@ -177,7 +186,7 @@ const savedViews: Array<{ key: SavedView; label: string }> = [
   { key: 'upcoming', label: 'Upcoming 30 days' },
   { key: 'unpaid', label: 'Has balance' },
   { key: 'needsData', label: 'Needs data' },
-  { key: 'completed', label: 'Completed' },
+  { key: 'completed', label: 'Done' },
 ]
 
 const managerThemes = {
@@ -384,6 +393,12 @@ const emptyForm: EventFormValues = {
   status: 'Booked',
 }
 
+const formatYearMonth = (ym: string) => {
+  if (!ym || ym === '-') return '-'
+  const [year, month] = ym.split('-')
+  return new Date(Number(year), Number(month) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' })
+}
+
 const peso = new Intl.NumberFormat('en-PH', {
   style: 'currency',
   currency: 'PHP',
@@ -473,6 +488,7 @@ const fetchEventsFromApi = async (params: EventListParams, signal?: AbortSignal)
   if (params.statusFilter !== 'All') searchParams.set('status', params.statusFilter)
   if (params.packageFilter !== 'All') searchParams.set('packageName', params.packageFilter)
   if (params.eventTypeFilter !== 'All') searchParams.set('eventType', params.eventTypeFilter)
+  if (params.hideDone && params.savedView !== 'completed') searchParams.set('hideDone', 'true')
 
   const response = await fetch(`/api/events?${searchParams.toString()}`, { signal })
 
@@ -524,14 +540,19 @@ const fetchEventSummaryFromApi = async (yearFilter: string, signal?: AbortSignal
 
   const body = (await response.json()) as { data?: Partial<EventSummary> }
 
+  const d = body.data as any
   return {
-    activeCount: body.data?.activeCount ?? 0,
-    bookedValue: body.data?.bookedValue ?? 0,
-    needsDataCount: body.data?.needsDataCount ?? 0,
-    outstandingBalance: body.data?.outstandingBalance ?? 0,
-    scheduledCount: body.data?.scheduledCount ?? 0,
-    unpaidCount: body.data?.unpaidCount ?? 0,
-    upcoming30Count: body.data?.upcoming30Count ?? 0,
+    activeCount: d?.activeCount ?? 0,
+    bookedValue: d?.bookedValue ?? 0,
+    scheduledCount: d?.scheduledCount ?? 0,
+    currentMonthRevenue: d?.currentMonthRevenue ?? 0,
+    topClient: d?.topClient ?? '-',
+    topClientRevenue: d?.topClientRevenue ?? 0,
+    averageMonthlyRevenue: d?.averageMonthlyRevenue ?? 0,
+    strongestMonth: d?.strongestMonth ?? '-',
+    strongestMonthRevenue: d?.strongestMonthRevenue ?? 0,
+    weakestMonth: d?.weakestMonth ?? '-',
+    weakestMonthRevenue: d?.weakestMonthRevenue ?? 0,
   }
 }
 
@@ -865,6 +886,9 @@ const EventTableSkeletonRows = ({
           },
         }}
       >
+        <TableCell sx={{ width: 44, px: 1 }}>
+          <TableSkeletonLine width={24} height={24} />
+        </TableCell>
         {visibleColumns.event ? (
           <TableCell sx={{ width: 190, maxWidth: 220 }}>
             <Stack spacing={0.75}>
@@ -1101,14 +1125,20 @@ const BusinessManager = () => {
   const [eventSummary, setEventSummary] = useState<EventSummary>({
     activeCount: 0,
     bookedValue: 0,
-    needsDataCount: 0,
-    outstandingBalance: 0,
     scheduledCount: 0,
-    unpaidCount: 0,
-    upcoming30Count: 0,
+    currentMonthRevenue: 0,
+    topClient: '-',
+    topClientRevenue: 0,
+    averageMonthlyRevenue: 0,
+    strongestMonth: '-',
+    strongestMonthRevenue: 0,
+    weakestMonth: '-',
+    weakestMonthRevenue: 0,
   })
   const [savingEvent, setSavingEvent] = useState(false)
   const [deletingEventId, setDeletingEventId] = useState('')
+  const [markingDoneId, setMarkingDoneId] = useState('')
+  const [confirmDoneEvent, setConfirmDoneEvent] = useState<EventRecord | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('events')
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
@@ -1117,6 +1147,7 @@ const BusinessManager = () => {
   const [yearFilter, setYearFilter] = useState('All')
   const [savedView, setSavedView] = useState<SavedView>('all')
   const [showUnscheduled, setShowUnscheduled] = useState(false)
+  const [hideDone, setHideDone] = useState(true)
   const [sortField, setSortField] = useState<SortField>('eventDate')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [visibleColumns, setVisibleColumns] = useState<Record<ColumnKey, boolean>>({
@@ -1139,13 +1170,15 @@ const BusinessManager = () => {
   const [editingEvent, setEditingEvent] = useState<EventRecord | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [calendarEventDetails, setCalendarEventDetails] = useState<EventRecord | null>(null)
-  const [colorMode, setColorMode] = useState<ColorMode>('light')
+  const [colorMode, setColorMode] = useState<ColorMode>('dark')
+  const navigate = useNavigate()
   const theme = managerThemes[colorMode]
   const muiTheme = useMemo(() => buildMuiTheme(colorMode), [colorMode])
   const deferredQuery = useDeferredValue(query)
   const eventListParams = useMemo<EventListParams>(
     () => ({
       eventTypeFilter,
+      hideDone,
       packageFilter,
       page,
       query: deferredQuery,
@@ -1159,6 +1192,7 @@ const BusinessManager = () => {
     }),
     [
       eventTypeFilter,
+      hideDone,
       packageFilter,
       page,
       deferredQuery,
@@ -1520,6 +1554,26 @@ const topLocations = useMemo(() => {
     }
   }
 
+  const handleLogout = () => {
+    localStorage.removeItem('legato-auth')
+    navigate('/login')
+  }
+
+  const handleMarkDone = async (event: EventRecord) => {
+    setMarkingDoneId(event.id)
+    setEventsError('')
+    try {
+      const updated: EventRecord = { ...event, status: 'Done', pipelineStage: 'Completed' }
+      await saveEventToApi(updated, event.id)
+      setEventsRevision((current) => current + 1)
+      setFacetsRevision((current) => current + 1)
+    } catch (error) {
+      setEventsError(error instanceof Error ? error.message : 'Failed to update event')
+    } finally {
+      setMarkingDoneId('')
+    }
+  }
+
   const handleSaveEvent = async (values: EventFormValues) => {
     const nextEvent: EventRecord = {
       ...values,
@@ -1695,6 +1749,27 @@ const topLocations = useMemo(() => {
               {colorMode === 'light' ? 'Dark' : 'Light'}
             </Button>
             <Button
+              variant='outlined'
+              startIcon={<FiLogOut />}
+              onClick={handleLogout}
+              sx={{
+                borderColor: 'var(--border)',
+                color: 'var(--muted)',
+                background: 'var(--panel)',
+                borderRadius: '8px',
+                fontWeight: 620,
+                textTransform: 'none',
+                minHeight: 42,
+                '&:hover': {
+                  borderColor: '#f43f5e',
+                  color: '#f43f5e',
+                  background: 'var(--panelSoft)',
+                },
+              }}
+            >
+              Logout
+            </Button>
+            <Button
               component={RouterLink}
               to='/invoice-templates'
               variant='outlined'
@@ -1752,7 +1827,7 @@ const topLocations = useMemo(() => {
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' },
+            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(6, 1fr)' },
             gap: 1.5,
             marginBottom: 2,
           }}
@@ -1760,26 +1835,38 @@ const topLocations = useMemo(() => {
           <DashboardMetric
             label='Booked value'
             value={peso.format(eventSummary.bookedValue)}
-            detail={`${eventSummary.activeCount} non-cancelled scheduled events${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
+            detail={`Total earnings from ${eventSummary.activeCount} events on record${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
             accent='var(--accent)'
           />
           <DashboardMetric
-            label='Still collectible'
-            value={peso.format(eventSummary.outstandingBalance)}
-            detail={`${eventSummary.unpaidCount} events have remaining balance; blank paid amounts count as unpaid`}
-            accent='#f43f5e'
+            label='Earnings this month'
+            value={peso.format(eventSummary.currentMonthRevenue)}
+            detail={`Revenue from non-cancelled events in the current calendar month`}
+            accent='#f59e0b'
           />
           <DashboardMetric
-            label='Due in 30 days'
-            value={String(eventSummary.upcoming30Count)}
-            detail='Non-cancelled scheduled events from today through the next 30 days'
+            label='Top client'
+            value={eventSummary.topClient}
+            detail={eventSummary.topClientRevenue > 0 ? `${peso.format(eventSummary.topClientRevenue)} total booked` : 'No client data yet'}
+            accent='#a78bfa'
+          />
+          <DashboardMetric
+            label='Avg monthly income'
+            value={peso.format(eventSummary.averageMonthlyRevenue)}
+            detail='Average monthly revenue across all recorded months'
             accent='var(--accent2)'
           />
           <DashboardMetric
-            label='Needs cleanup'
-            value={String(eventSummary.needsDataCount)}
-            detail='Missing amount, schedule, client, type, package, or venue'
-            accent='var(--accent3)'
+            label='Strongest month'
+            value={formatYearMonth(eventSummary.strongestMonth)}
+            detail={eventSummary.strongestMonthRevenue > 0 ? `${peso.format(eventSummary.strongestMonthRevenue)} in revenue` : 'No data yet'}
+            accent='#34d399'
+          />
+          <DashboardMetric
+            label='Weakest month'
+            value={formatYearMonth(eventSummary.weakestMonth)}
+            detail={eventSummary.weakestMonthRevenue > 0 ? `${peso.format(eventSummary.weakestMonthRevenue)} in revenue` : 'No data yet'}
+            accent='#fb923c'
           />
         </Box>
 
@@ -1930,10 +2017,27 @@ const topLocations = useMemo(() => {
                   onClick={() => {
                     setSavedView(item.key)
                     setPage(0)
+                    if (item.key === 'completed') setHideDone(false)
                   }}
                   sx={{ borderRadius: '8px', px: 0.5 }}
                 />
               ))}
+              <Box sx={{ flex: 1 }} />
+              <Chip
+                label={hideDone ? 'Show done' : 'Hide done'}
+                clickable
+                variant='outlined'
+                onClick={() => {
+                  setHideDone((prev) => !prev)
+                  setPage(0)
+                }}
+                sx={{
+                  borderRadius: '8px',
+                  px: 0.5,
+                  borderColor: hideDone ? 'var(--border)' : '#22c55e',
+                  color: hideDone ? 'var(--muted)' : '#22c55e',
+                }}
+              />
             </Box>
             <Box
               sx={{
@@ -2079,6 +2183,7 @@ const topLocations = useMemo(() => {
               <Table stickyHeader size='small'>
                 <TableHead>
                   <TableRow>
+                    <TableCell sx={{ width: 44, px: 1 }} />
                     {[...visibleTableColumns.map((column) => column.label), ''].map((header) => (
                       <TableCell
                         key={header}
@@ -2100,19 +2205,22 @@ const topLocations = useMemo(() => {
                   ) : null}
                   {!eventsLoading && events.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={visibleTableColumns.length + 1} align='center' sx={{ py: 5, color: 'text.secondary' }}>
+                      <TableCell colSpan={visibleTableColumns.length + 2} align='center' sx={{ py: 5, color: 'text.secondary' }}>
                         No events match this view.
                       </TableCell>
                     </TableRow>
                   ) : null}
                   {events.map((event) => {
                     const tone = statusTone(event.status)
+                    const eventIsDone = isDone(event.status)
 
                     return (
                       <TableRow
                         key={event.id}
                         hover
                         sx={{
+                          opacity: eventIsDone ? 0.6 : 1,
+                          transition: 'opacity 150ms ease',
                           '& td': {
                             color: 'var(--text)',
                             borderColor: 'var(--borderSoft)',
@@ -2124,6 +2232,36 @@ const topLocations = useMemo(() => {
                           },
                         }}
                       >
+                        <TableCell sx={{ width: 44, px: 1, py: 0 }}>
+                          {eventIsDone ? (
+                            <IconButton
+                              size='small'
+                              disabled
+                              title='Done'
+                              sx={{ color: '#22c55e', opacity: 1, '&.Mui-disabled': { color: '#22c55e' } }}
+                            >
+                              <FiCheckCircle size={17} />
+                            </IconButton>
+                          ) : (
+                            <Tooltip title='Click to mark as done' placement='right' arrow>
+                              <span>
+                                <IconButton
+                                  size='small'
+                                  onClick={() => setConfirmDoneEvent(event)}
+                                  disabled={markingDoneId === event.id}
+                                  aria-label={`Mark ${event.name} as done`}
+                                  sx={{
+                                    color: 'var(--faint)',
+                                    '&:hover': { color: '#22c55e' },
+                                    transition: 'color 150ms ease',
+                                  }}
+                                >
+                                  <FiCircle size={17} />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          )}
+                        </TableCell>
                         {visibleColumns.event ? (
                           <TableCell sx={{ width: 190, maxWidth: 220 }}>
                             <Typography noWrap sx={{ fontSize: 13.5, fontWeight: 650, color: 'var(--text)' }}>{event.name || 'Untitled event'}</Typography>
@@ -2912,6 +3050,61 @@ const topLocations = useMemo(() => {
           onClose={() => setDialogOpen(false)}
           onSave={handleSaveEvent}
         />
+      ) : null}
+
+      {confirmDoneEvent ? (
+        <Dialog
+          open
+          onClose={() => setConfirmDoneEvent(null)}
+          maxWidth='xs'
+          fullWidth
+          slotProps={{
+            paper: {
+              sx: {
+                background: theme.panel,
+                border: `1px solid ${theme.border}`,
+                borderRadius: '8px',
+              },
+            },
+          }}
+        >
+          <DialogTitle sx={{ fontWeight: 700, color: theme.text, pb: 1 }}>
+            Mark as done?
+          </DialogTitle>
+          <DialogContent>
+            <Typography sx={{ color: theme.muted, fontSize: 14 }}>
+              This will mark <strong style={{ color: theme.text }}>{confirmDoneEvent.name || 'this event'}</strong> as done and move it to Completed. You can still edit it afterwards.
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+            <Button
+              onClick={() => setConfirmDoneEvent(null)}
+              variant='outlined'
+              sx={{ borderColor: theme.border, color: theme.text, textTransform: 'none', fontWeight: 620 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const target = confirmDoneEvent
+                setConfirmDoneEvent(null)
+                void handleMarkDone(target)
+              }}
+              variant='contained'
+              disabled={markingDoneId === confirmDoneEvent.id}
+              sx={{
+                background: '#22c55e',
+                color: '#fff',
+                textTransform: 'none',
+                fontWeight: 650,
+                boxShadow: 'none',
+                '&:hover': { background: '#16a34a', boxShadow: 'none' },
+              }}
+            >
+              Yes, mark done
+            </Button>
+          </DialogActions>
+        </Dialog>
       ) : null}
       </Box>
     </ThemeProvider>
