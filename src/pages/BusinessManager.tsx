@@ -40,6 +40,7 @@ import {
   FiMapPin,
   FiUsers,
   FiEdit3,
+  FiFilter,
   FiFileText,
   FiMoon,
   FiPlus,
@@ -674,7 +675,8 @@ const DashboardMetric = ({
       position: 'relative',
       borderRadius: '8px',
       background: 'var(--panel)',
-      minWidth: 0,
+      minWidth: { xs: 'min(78vw, 280px)', sm: 0 },
+      scrollSnapAlign: { xs: 'start', sm: 'none' },
       overflow: 'hidden',
       '&::before': {
         content: '""',
@@ -685,7 +687,7 @@ const DashboardMetric = ({
       },
     }}
   >
-    <CardContent sx={{ padding: { xs: 2.25, md: 2.5 }, '&:last-child': { paddingBottom: { xs: 2.25, md: 2.5 } } }}>
+    <CardContent sx={{ padding: { xs: 1.75, md: 2.5 }, '&:last-child': { paddingBottom: { xs: 1.75, md: 2.5 } } }}>
       <Typography
         sx={{
           fontSize: 11,
@@ -699,7 +701,7 @@ const DashboardMetric = ({
       </Typography>
       <Typography
         sx={{
-          fontSize: { xs: 25, md: 30 },
+          fontSize: { xs: 22, md: 30 },
           lineHeight: 1.1,
           fontWeight: 700,
           color: 'text.primary',
@@ -1141,6 +1143,7 @@ const BusinessManager = () => {
   const [confirmDoneEvent, setConfirmDoneEvent] = useState<EventRecord | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('events')
   const [query, setQuery] = useState('')
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [statusFilter, setStatusFilter] = useState('All')
   const [packageFilter, setPackageFilter] = useState('All')
   const [eventTypeFilter, setEventTypeFilter] = useState('All')
@@ -1684,20 +1687,21 @@ const topLocations = useMemo(() => {
           component={Card}
           sx={{
             display: 'flex',
-            flexDirection: { xs: 'column', md: 'row' },
+            flexDirection: { xs: 'row', sm: 'column', md: 'row' },
             justifyContent: 'space-between',
-            gap: '1rem',
-            alignItems: { md: 'flex-end' },
-            marginBottom: 2.5,
+            gap: { xs: 0.75, sm: '1rem' },
+            alignItems: { xs: 'center', sm: 'stretch', md: 'flex-end' },
+            marginBottom: { xs: 1.5, md: 2.5 },
             borderRadius: '8px',
             background: 'var(--panel)',
             borderLeft: '4px solid var(--accent)',
-            padding: { xs: 2.5, md: 3.25 },
+            padding: { xs: 1, sm: 2.5, md: 3.25 },
           }}
         >
           <Box>
             <Typography
               sx={{
+                display: { xs: 'none', sm: 'block' },
                 fontSize: 12,
                 fontWeight: 650,
                 letterSpacing: '0.08em',
@@ -1710,23 +1714,41 @@ const topLocations = useMemo(() => {
             <Typography
               component='h1'
               sx={{
-                fontSize: { xs: 29, md: 36 },
+                fontSize: { xs: 24, md: 36 },
                 lineHeight: 1,
                 fontWeight: 720,
                 letterSpacing: 0,
-                marginTop: '0.35rem',
+                marginTop: { xs: 0, sm: '0.35rem' },
                 color: 'var(--text)',
               }}
             >
-              Event Business Tracker
+              <Box component='span' sx={{ display: { xs: 'inline', sm: 'none' } }}>Events</Box>
+              <Box component='span' sx={{ display: { xs: 'none', sm: 'inline' } }}>Event Business Tracker</Box>
             </Typography>
-            <Typography sx={{ color: 'var(--muted)', marginTop: '0.55rem', maxWidth: 620 }}>
+            <Typography sx={{ display: { xs: 'none', sm: 'block' }, color: 'var(--muted)', marginTop: '0.55rem', maxWidth: 620 }}>
               Track events, booking status, revenue, packages, and the working calendar from one API-backed operations dashboard.
             </Typography>
           </Box>
 
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+          <Stack
+            direction='row'
+            spacing={1}
+            sx={{
+              width: { xs: 'auto', sm: '100%', md: 'auto' },
+              '& .mobile-header-action': {
+                minWidth: { xs: 0, sm: 64 },
+                width: { xs: 36, sm: 'auto' },
+                flex: '0 0 auto',
+                px: { xs: 0, sm: 2 },
+              },
+              '& .mobile-header-action .MuiButton-startIcon': {
+                margin: { xs: 0, sm: '0 8px 0 -4px' },
+              },
+            }}
+          >
             <Button
+              className='mobile-header-action'
+              aria-label={colorMode === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
               variant='outlined'
               startIcon={colorMode === 'light' ? <FiMoon /> : <FiSun />}
               onClick={() =>
@@ -1739,16 +1761,20 @@ const topLocations = useMemo(() => {
                 borderRadius: '8px',
                 fontWeight: 650,
                 textTransform: 'none',
-                minHeight: 42,
+                minHeight: { xs: 36, sm: 42 },
                 '&:hover': {
                   borderColor: 'var(--accent)',
                   background: 'var(--panelSoft)',
                 },
               }}
             >
-              {colorMode === 'light' ? 'Dark' : 'Light'}
+              <Box component='span' sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                {colorMode === 'light' ? 'Dark' : 'Light'}
+              </Box>
             </Button>
             <Button
+              className='mobile-header-action'
+              aria-label='Log out'
               variant='outlined'
               startIcon={<FiLogOut />}
               onClick={handleLogout}
@@ -1759,7 +1785,7 @@ const topLocations = useMemo(() => {
                 borderRadius: '8px',
                 fontWeight: 620,
                 textTransform: 'none',
-                minHeight: 42,
+                minHeight: { xs: 36, sm: 42 },
                 '&:hover': {
                   borderColor: '#f43f5e',
                   color: '#f43f5e',
@@ -1767,9 +1793,11 @@ const topLocations = useMemo(() => {
                 },
               }}
             >
-              Logout
+              <Box component='span' sx={{ display: { xs: 'none', sm: 'inline' } }}>Logout</Box>
             </Button>
             <Button
+              className='mobile-header-action'
+              aria-label='Open invoice maker'
               component={RouterLink}
               to='/invoice-templates'
               variant='outlined'
@@ -1781,16 +1809,18 @@ const topLocations = useMemo(() => {
                 borderRadius: '8px',
                 fontWeight: 620,
                 textTransform: 'none',
-                minHeight: 42,
+                minHeight: { xs: 36, sm: 42 },
                 '&:hover': {
                   borderColor: 'var(--accent)',
                   background: 'var(--panelSoft)',
                 },
               }}
             >
-              Invoice maker
+              <Box component='span' sx={{ display: { xs: 'none', sm: 'inline' } }}>Invoice maker</Box>
             </Button>
             <Button
+              className='mobile-header-action'
+              aria-label='Add event'
               variant='contained'
               startIcon={<FiPlus />}
               onClick={openCreateDialog}
@@ -1802,14 +1832,14 @@ const topLocations = useMemo(() => {
                 boxShadow: 'none',
                 fontWeight: 650,
                 textTransform: 'none',
-                minHeight: 42,
+                minHeight: { xs: 36, sm: 42 },
                 '&:hover': {
                   background: 'var(--primaryHover)',
                   boxShadow: 'none',
                 },
               }}
             >
-              Add event
+              <Box component='span' sx={{ display: { xs: 'none', sm: 'inline' } }}>Add event</Box>
             </Button>
           </Stack>
         </Box>
@@ -1825,11 +1855,19 @@ const topLocations = useMemo(() => {
         ) : null}
 
         <Box
+          aria-label='Business summary metrics'
           sx={{
-            display: 'grid',
+            display: { xs: 'flex', sm: 'grid' },
             gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(6, 1fr)' },
+            overflowX: { xs: 'auto', sm: 'visible' },
+            overscrollBehaviorX: 'contain',
+            scrollSnapType: { xs: 'x mandatory', sm: 'none' },
+            scrollbarWidth: 'none',
+            WebkitOverflowScrolling: 'touch',
+            '&::-webkit-scrollbar': { display: 'none' },
             gap: 1.5,
             marginBottom: 2,
+            paddingBottom: { xs: 0.5, sm: 0 },
           }}
         >
           <DashboardMetric
@@ -1874,13 +1912,17 @@ const topLocations = useMemo(() => {
           component={Card}
           sx={{
             display: 'flex',
-            flexWrap: 'wrap',
+            flexWrap: { xs: 'nowrap', sm: 'wrap' },
             gap: 0.75,
             background: 'var(--panel)',
             borderRadius: '8px',
             padding: 0.75,
             marginBottom: 1.5,
             alignItems: 'center',
+            overflowX: { xs: 'auto', sm: 'visible' },
+            overscrollBehaviorX: 'contain',
+            scrollbarWidth: 'none',
+            '&::-webkit-scrollbar': { display: 'none' },
           }}
         >
           {[
@@ -1902,7 +1944,9 @@ const topLocations = useMemo(() => {
               }}
               startIcon={<Icon />}
               sx={{
-                flex: { xs: '1 1 100%', sm: '0 0 auto' },
+                flex: '0 0 auto',
+                minHeight: 38,
+                whiteSpace: 'nowrap',
                 borderRadius: '8px',
                 color: viewMode === value ? 'white' : 'text.secondary',
                 background: viewMode === value ? 'primary.main' : 'transparent',
@@ -1915,10 +1959,11 @@ const topLocations = useMemo(() => {
               {label as string}
             </Button>
           ))}
-          <Box sx={{ flex: 1 }} />
+          <Box sx={{ display: { xs: 'none', sm: 'block' }, flex: 1 }} />
           <Button
             onClick={(event) => setPropertiesAnchor(event.currentTarget)}
             sx={{
+              flex: '0 0 auto',
               borderRadius: '8px',
               color: 'var(--muted)',
               fontWeight: 620,
@@ -1930,6 +1975,7 @@ const topLocations = useMemo(() => {
           </Button>
           <Button
             sx={{
+              display: { xs: 'none', sm: 'inline-flex' },
               borderRadius: '8px',
               color: 'var(--muted)',
               fontWeight: 620,
@@ -2000,11 +2046,15 @@ const topLocations = useMemo(() => {
             <Box
               sx={{
                 display: 'flex',
-                flexWrap: 'wrap',
+                flexWrap: { xs: 'nowrap', sm: 'wrap' },
                 gap: 1,
                 padding: { xs: 1.5, md: 2 },
                 borderBottom: '1px solid var(--borderSoft)',
                 background: 'var(--panel)',
+                overflowX: { xs: 'auto', sm: 'visible' },
+                overscrollBehaviorX: 'contain',
+                scrollbarWidth: 'none',
+                '&::-webkit-scrollbar': { display: 'none' },
               }}
             >
               {savedViews.map((item) => (
@@ -2019,10 +2069,10 @@ const topLocations = useMemo(() => {
                     setPage(0)
                     if (item.key === 'completed') setHideDone(false)
                   }}
-                  sx={{ borderRadius: '8px', px: 0.5 }}
+                  sx={{ flex: '0 0 auto', borderRadius: '8px', px: 0.5 }}
                 />
               ))}
-              <Box sx={{ flex: 1 }} />
+              <Box sx={{ display: { xs: 'none', sm: 'block' }, flex: 1 }} />
               <Chip
                 label={hideDone ? 'Show done' : 'Hide done'}
                 clickable
@@ -2032,6 +2082,7 @@ const topLocations = useMemo(() => {
                   setPage(0)
                 }}
                 sx={{
+                  flex: '0 0 auto',
                   borderRadius: '8px',
                   px: 0.5,
                   borderColor: hideDone ? 'var(--border)' : '#22c55e',
@@ -2042,7 +2093,7 @@ const topLocations = useMemo(() => {
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: '1.35fr repeat(5, minmax(130px, 1fr))' },
+                gridTemplateColumns: { xs: 'minmax(0, 1fr) auto', md: '1.35fr repeat(5, minmax(130px, 1fr))' },
                 gap: 1,
                 padding: { xs: 1.5, md: 2 },
                 borderBottom: '1px solid var(--borderSoft)',
@@ -2063,6 +2114,22 @@ const topLocations = useMemo(() => {
                   },
                 }}
               />
+              <Button
+                variant={mobileFiltersOpen ? 'contained' : 'outlined'}
+                startIcon={<FiFilter />}
+                onClick={() => setMobileFiltersOpen((open) => !open)}
+                aria-expanded={mobileFiltersOpen}
+                sx={{
+                  display: { xs: 'inline-flex', md: 'none' },
+                  minWidth: 44,
+                  px: 1.25,
+                  '& .MuiButton-startIcon': { margin: 0 },
+                }}
+              >
+                <Box component='span' sx={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+                  {mobileFiltersOpen ? 'Hide filters' : 'Show filters'}
+                </Box>
+              </Button>
               <TextField
                 select
                 label='Year'
@@ -2072,6 +2139,7 @@ const topLocations = useMemo(() => {
                   setPage(0)
                 }}
                 size='small'
+                sx={{ display: { xs: mobileFiltersOpen ? 'inline-flex' : 'none', md: 'inline-flex' }, gridColumn: { xs: '1 / -1', md: 'auto' } }}
               >
                 {yearOptions.map((year) => (
                   <MenuItem key={year} value={year}>
@@ -2088,6 +2156,7 @@ const topLocations = useMemo(() => {
                   setPage(0)
                 }}
                 size='small'
+                sx={{ display: { xs: mobileFiltersOpen ? 'inline-flex' : 'none', md: 'inline-flex' }, gridColumn: { xs: '1 / -1', md: 'auto' } }}
               >
                 {statusOptions.map((status) => (
                   <MenuItem key={status} value={status}>
@@ -2104,6 +2173,7 @@ const topLocations = useMemo(() => {
                   setPage(0)
                 }}
                 size='small'
+                sx={{ display: { xs: mobileFiltersOpen ? 'inline-flex' : 'none', md: 'inline-flex' }, gridColumn: { xs: '1 / -1', md: 'auto' } }}
               >
                 {eventTypeOptions.map((eventType) => (
                   <MenuItem key={eventType} value={eventType}>
@@ -2120,6 +2190,7 @@ const topLocations = useMemo(() => {
                   setPage(0)
                 }}
                 size='small'
+                sx={{ display: { xs: mobileFiltersOpen ? 'inline-flex' : 'none', md: 'inline-flex' }, gridColumn: { xs: '1 / -1', md: 'auto' } }}
               >
                 {packageOptions.map((packageName) => (
                   <MenuItem key={packageName} value={packageName}>
@@ -2133,6 +2204,7 @@ const topLocations = useMemo(() => {
                 value={sortField}
                 onChange={(event) => setSortField(event.target.value as SortField)}
                 size='small'
+                sx={{ display: { xs: mobileFiltersOpen ? 'inline-flex' : 'none', md: 'inline-flex' }, gridColumn: { xs: '1 / -1', md: 'auto' } }}
               >
                 {[
                   ['eventDate', 'Event date'],
@@ -2152,6 +2224,7 @@ const topLocations = useMemo(() => {
                 value={sortDirection}
                 onChange={(event) => setSortDirection(event.target.value as SortDirection)}
                 size='small'
+                sx={{ display: { xs: mobileFiltersOpen ? 'inline-flex' : 'none', md: 'inline-flex' }, gridColumn: { xs: '1 / -1', md: 'auto' } }}
               >
                 <MenuItem value='asc'>Ascending</MenuItem>
                 <MenuItem value='desc'>Descending</MenuItem>
@@ -2169,6 +2242,8 @@ const topLocations = useMemo(() => {
                 }
                 label='Show unscheduled'
                 sx={{
+                  display: { xs: mobileFiltersOpen ? 'inline-flex' : 'none', md: 'inline-flex' },
+                  gridColumn: { xs: '1 / -1', md: 'auto' },
                   alignSelf: 'center',
                   color: 'var(--muted)',
                   '& .MuiFormControlLabel-label': {
