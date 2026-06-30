@@ -18,6 +18,7 @@ import {
   MenuItem,
   Skeleton,
   Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
@@ -25,6 +26,7 @@ import {
   TableHead,
   TablePagination,
   TableRow,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -40,6 +42,7 @@ import {
   FiMapPin,
   FiUsers,
   FiEdit3,
+  FiDollarSign,
   FiFilter,
   FiFileText,
   FiMoon,
@@ -48,6 +51,26 @@ import {
   FiSun,
   FiTrash2,
 } from 'react-icons/fi'
+
+const expenseTypes = [
+  'Crew salary',
+  'Crew food',
+  'Gas',
+  'Lalamove',
+  'Reinforcements',
+  'Others',
+] as const
+
+type ExpenseType = (typeof expenseTypes)[number]
+
+type EventExpense = {
+  id: string
+  type: ExpenseType
+  amount: number
+  note: string
+}
+
+type EventExpenseFormValue = Omit<EventExpense, 'amount'> & { amount: string }
 
 type EventRecord = {
   id: string
@@ -59,6 +82,9 @@ type EventRecord = {
   eventDate: string
   eventType: string
   eventTime: string
+  expenses: EventExpense[]
+  expenseCount: number
+  expenseTotal: number
   location: string
   notes: string
   packageName: string
@@ -67,7 +93,7 @@ type EventRecord = {
   status: string
 }
 
-type EventFormValues = Omit<EventRecord, 'id' | 'agreedAmount' | 'amountPaid'> & {
+type EventFormValues = Omit<EventRecord, 'id' | 'agreedAmount' | 'amountPaid' | 'expenses' | 'expenseCount' | 'expenseTotal'> & {
   agreedAmount: string
   amountPaid: string
 }
@@ -451,6 +477,18 @@ const normalizeEventRecord = (event: Partial<EventRecord>): EventRecord => ({
   eventDate: event.eventDate || '',
   eventType: event.eventType || '',
   eventTime: event.eventTime || '',
+  expenses: Array.isArray(event.expenses)
+    ? event.expenses.map((expense) => ({
+        id: expense.id,
+        type: expenseTypes.includes(expense.type) ? expense.type : 'Others',
+        amount: typeof expense.amount === 'number' && Number.isFinite(expense.amount) ? expense.amount : 0,
+        note: expense.note || '',
+      }))
+    : [],
+  expenseCount: typeof event.expenseCount === 'number' ? event.expenseCount : event.expenses?.length ?? 0,
+  expenseTotal: typeof event.expenseTotal === 'number'
+    ? event.expenseTotal
+    : event.expenses?.reduce((total, expense) => total + (Number(expense.amount) || 0), 0) ?? 0,
   location: event.location || '',
   notes: event.notes || '',
   packageName: event.packageName || '',
@@ -541,7 +579,7 @@ const fetchEventSummaryFromApi = async (yearFilter: string, signal?: AbortSignal
 
   const body = (await response.json()) as { data?: Partial<EventSummary> }
 
-  const d = body.data as any
+  const d = body.data
   return {
     activeCount: d?.activeCount ?? 0,
     bookedValue: d?.bookedValue ?? 0,
@@ -965,18 +1003,39 @@ const EventTableSkeletonRows = ({
 
 const EventDialog = ({
   editingEvent,
+  initialTab,
   savingEvent,
   theme,
   onClose,
   onSave,
 }: {
   editingEvent: EventRecord | null
+  initialTab: 'details' | 'expenses'
   savingEvent: boolean
   theme: ManagerTheme
   onClose: () => void
-  onSave: (values: EventFormValues) => Promise<void>
+  onSave: (values: EventFormValues, expenses: EventExpense[]) => Promise<void>
 }) => {
   const initialValues = editingEvent ? toFormValues(editingEvent) : emptyForm
+  const [activeTab, setActiveTab] = useState<'details' | 'expenses'>(initialTab)
+  const [expenses, setExpenses] = useState<EventExpenseFormValue[]>(
+    () => editingEvent?.expenses.map((expense) => ({ ...expense, amount: String(expense.amount) })) ?? [],
+  )
+  const [expenseError, setExpenseError] = useState('')
+  const expenseTotal = expenses.reduce((total, expense) => total + (Number(expense.amount) || 0), 0)
+
+  const addExpense = () => {
+    setExpenses((current) => [
+      ...current,
+      { id: `expense-${Date.now()}`, type: 'Crew salary', amount: '', note: '' },
+    ])
+  }
+
+  const updateExpense = (id: string, updates: Partial<EventExpenseFormValue>) => {
+    setExpenses((current) => current.map((expense) => (
+      expense.id === id ? { ...expense, ...updates } : expense
+    )))
+  }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -986,7 +1045,19 @@ const EventDialog = ({
       return current
     }, {} as EventFormValues)
 
-    await onSave(values)
+    const normalizedExpenses = expenses.map((expense) => ({
+      ...expense,
+      amount: Number(expense.amount),
+    }))
+
+    if (expenses.some((expense) => expense.amount.trim() === '') || normalizedExpenses.some((expense) => !Number.isFinite(expense.amount) || expense.amount < 0)) {
+      setExpenseError('Enter a valid amount of zero or greater for every expense.')
+      setActiveTab('expenses')
+      return
+    }
+
+    setExpenseError('')
+    await onSave(values, normalizedExpenses)
   }
 
   return (
@@ -1029,13 +1100,25 @@ const EventDialog = ({
           },
         }}
       >
-        <DialogTitle sx={{ fontWeight: 700, color: theme.text }}>
+        <DialogTitle sx={{ fontWeight: 700, color: theme.text, pb: 1 }}>
           {editingEvent ? 'Edit event' : 'Add event'}
         </DialogTitle>
         <DialogContent>
+          <Tabs
+            value={activeTab}
+            onChange={(_, tab: 'details' | 'expenses') => setActiveTab(tab)}
+            sx={{ mb: 2, borderBottom: `1px solid ${theme.border}` }}
+          >
+            <Tab value='details' label='Event details' />
+            <Tab
+              value='expenses'
+              label={editingEvent ? `Expenses${expenses.length ? ` (${expenses.length})` : ''}` : 'Expenses'}
+              disabled={!editingEvent}
+            />
+          </Tabs>
           <Box
             sx={{
-              display: 'grid',
+              display: activeTab === 'details' ? 'grid' : 'none',
               gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
               gap: 1.5,
               paddingTop: 1,
@@ -1077,6 +1160,93 @@ const EventDialog = ({
                   : null}
               </TextField>
             ))}
+          </Box>
+          <Box sx={{ display: activeTab === 'expenses' ? 'block' : 'none' }}>
+            {expenseError ? (
+              <Typography sx={{ color: '#f43f5e', fontSize: 13, fontWeight: 650, mb: 1.5 }}>
+                {expenseError}
+              </Typography>
+            ) : null}
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 2,
+                mb: 2,
+              }}
+            >
+              <Box>
+                <Typography sx={{ fontWeight: 700 }}>Event expenses</Typography>
+                <Typography sx={{ color: theme.muted, fontSize: 13 }}>
+                  Track costs without adding another permanent table column.
+                </Typography>
+              </Box>
+              <Button type='button' variant='outlined' startIcon={<FiPlus />} onClick={addExpense}>
+                Add expense
+              </Button>
+            </Box>
+
+            {expenses.length === 0 ? (
+              <Box sx={{ border: `1px dashed ${theme.border}`, borderRadius: '8px', p: 4, textAlign: 'center' }}>
+                <Typography sx={{ color: theme.muted }}>No expenses recorded for this event.</Typography>
+                <Button type='button' startIcon={<FiPlus />} onClick={addExpense} sx={{ mt: 1 }}>
+                  Add the first expense
+                </Button>
+              </Box>
+            ) : (
+              <Stack spacing={1.25}>
+                {expenses.map((expense) => (
+                  <Box
+                    key={expense.id}
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: { xs: '1fr auto', sm: '180px 150px 1fr auto' },
+                      gap: 1,
+                      alignItems: 'center',
+                      p: 1.25,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: '8px',
+                    }}
+                  >
+                    <TextField
+                      select
+                      label='Expense type'
+                      value={expense.type}
+                      onChange={(event) => updateExpense(expense.id, { type: event.target.value as ExpenseType })}
+                    >
+                      {expenseTypes.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}
+                    </TextField>
+                    <TextField
+                      label='Amount'
+                      type='number'
+                      value={expense.amount}
+                      slotProps={{ htmlInput: { min: 0, step: '0.01' } }}
+                      onChange={(event) => updateExpense(expense.id, { amount: event.target.value })}
+                      sx={{ gridColumn: { xs: '1 / 2', sm: 'auto' } }}
+                    />
+                    <TextField
+                      label='Note (optional)'
+                      value={expense.note}
+                      onChange={(event) => updateExpense(expense.id, { note: event.target.value })}
+                      sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' }, gridRow: { xs: 2, sm: 'auto' } }}
+                    />
+                    <IconButton
+                      type='button'
+                      aria-label={`Remove ${expense.type} expense`}
+                      onClick={() => setExpenses((current) => current.filter((item) => item.id !== expense.id))}
+                      sx={{ color: '#f43f5e', gridColumn: { xs: 2, sm: 'auto' }, gridRow: { xs: 1, sm: 'auto' } }}
+                    >
+                      <FiTrash2 />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Stack>
+            )}
+
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+              <Typography sx={{ fontWeight: 700 }}>Total expenses: {peso.format(expenseTotal)}</Typography>
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions sx={{ padding: { xs: 2, md: '1.25rem 1.75rem 1.5rem' } }}>
@@ -1171,6 +1341,7 @@ const BusinessManager = () => {
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(25)
   const [editingEvent, setEditingEvent] = useState<EventRecord | null>(null)
+  const [dialogInitialTab, setDialogInitialTab] = useState<'details' | 'expenses'>('details')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [calendarEventDetails, setCalendarEventDetails] = useState<EventRecord | null>(null)
   const [colorMode, setColorMode] = useState<ColorMode>('dark')
@@ -1533,11 +1704,13 @@ const topLocations = useMemo(() => {
 
   const openCreateDialog = () => {
     setEditingEvent(null)
+    setDialogInitialTab('details')
     setDialogOpen(true)
   }
 
-  const openEditDialog = (event: EventRecord) => {
+  const openEditDialog = (event: EventRecord, initialTab: 'details' | 'expenses' = 'details') => {
     setEditingEvent(event)
+    setDialogInitialTab(initialTab)
     setDialogOpen(true)
   }
 
@@ -1577,12 +1750,15 @@ const topLocations = useMemo(() => {
     }
   }
 
-  const handleSaveEvent = async (values: EventFormValues) => {
+  const handleSaveEvent = async (values: EventFormValues, expenses: EventExpense[]) => {
     const nextEvent: EventRecord = {
       ...values,
       id: editingEvent?.id ?? `evt-${Date.now()}`,
       agreedAmount: parseAmountInput(values.agreedAmount),
       amountPaid: parseAmountInput(values.amountPaid),
+      expenses,
+      expenseCount: expenses.length,
+      expenseTotal: expenses.reduce((total, expense) => total + expense.amount, 0),
     }
 
     setSavingEvent(true)
@@ -2420,6 +2596,17 @@ const topLocations = useMemo(() => {
                           </TableCell>
                         ) : null}
                         <TableCell align='right'>
+                          {event.expenseCount > 0 ? (
+                            <Tooltip title={`${event.expenseCount} expense${event.expenseCount === 1 ? '' : 's'} · ${peso.format(event.expenseTotal)}`}>
+                              <IconButton
+                                sx={{ color: 'var(--accent)' }}
+                                onClick={() => openEditDialog(event, 'expenses')}
+                                aria-label={`View expenses for ${event.name}`}
+                              >
+                                <FiDollarSign />
+                              </IconButton>
+                            </Tooltip>
+                          ) : null}
                           <IconButton sx={{ color: 'var(--muted)' }} onClick={() => openEditDialog(event)} aria-label={`Edit ${event.name}`}>
                             <FiEdit3 />
                           </IconButton>
@@ -3120,6 +3307,7 @@ const topLocations = useMemo(() => {
         <EventDialog
           key={editingEvent?.id ?? 'new-event'}
           editingEvent={editingEvent}
+          initialTab={dialogInitialTab}
           savingEvent={savingEvent}
           theme={theme}
           onClose={() => setDialogOpen(false)}
