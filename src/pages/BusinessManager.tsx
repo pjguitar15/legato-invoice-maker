@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useDeferredValue, useEffect, useMemo, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react'
 import {
   Autocomplete,
   Box,
@@ -70,11 +70,14 @@ type EventExpense = {
   type: ExpenseType
   amount: number
   note: string
+  crewId: string
+  crewName: string
 }
 
 type EventExpenseFormValue = Omit<EventExpense, 'amount'> & { amount: string }
-type EventOptionKind = 'eventType' | 'package'
+type EventOptionKind = 'eventType' | 'package' | 'crew'
 type NewEventOption = { inputValue: string; label: string; isNew: true }
+type CrewMember = { id: string; name: string }
 
 type EventRecord = {
   id: string
@@ -115,8 +118,8 @@ type ColumnKey =
   | 'package'
   | 'location'
   | 'amount'
+  | 'paid'
   | 'balance'
-  | 'pipeline'
   | 'source'
   | 'status'
 
@@ -143,7 +146,6 @@ type EventListParams = {
   query: string
   rowsPerPage: number
   savedView: SavedView
-  showUnscheduled: boolean
   sortDirection: SortDirection
   sortField: SortField
   statusFilter: string
@@ -157,6 +159,7 @@ type EventListMeta = {
 }
 
 type EventFacets = {
+  crews: CrewMember[]
   eventTypes: string[]
   packages: string[]
   statuses: string[]
@@ -166,6 +169,8 @@ type EventFacets = {
 type EventSummary = {
   activeCount: number
   bookedValue: number
+  completedRevenue: number
+  totalExpenses: number
   scheduledCount: number
   currentMonthRevenue: number
   topClient: string
@@ -177,6 +182,24 @@ type EventSummary = {
   weakestMonthRevenue: number
 }
 
+type CrewPayrollSummary = {
+  crewId: string
+  crewName: string
+  totalIncome: number
+  paymentCount: number
+  eventCount: number
+}
+
+type CrewPayrollRecord = {
+  eventId: string
+  eventName: string
+  eventDate: string
+  crewId: string
+  crewName: string
+  amount: number
+  note: string
+}
+
 const tableColumns: Array<{ key: ColumnKey; label: string }> = [
   { key: 'event', label: 'Event' },
   { key: 'date', label: 'Date' },
@@ -185,15 +208,16 @@ const tableColumns: Array<{ key: ColumnKey; label: string }> = [
   { key: 'type', label: 'Type' },
   { key: 'package', label: 'Package' },
   { key: 'amount', label: 'Amount' },
+  { key: 'paid', label: 'Paid' },
   { key: 'balance', label: 'Balance' },
-  { key: 'pipeline', label: 'Pipeline' },
   { key: 'source', label: 'Source' },
   { key: 'status', label: 'Status' },
 ]
 
-const pipelineStages = [
+const eventStatuses = [
   'Inquiry',
   'Quoted',
+  'Pencil Book',
   'Booked',
   'Deposit Paid',
   'Completed',
@@ -272,13 +296,12 @@ const eventFormFields: Array<{ name: EventFormFieldName; label: string }> = [
   { name: 'name', label: 'Event name' },
   { name: 'clientName', label: 'Client name' },
   { name: 'eventDate', label: 'Event date' },
-  { name: 'eventTime', label: 'Event time' },
+  { name: 'eventTime', label: 'Ingress time' },
   { name: 'eventType', label: 'Event type' },
   { name: 'packageName', label: 'Package' },
   { name: 'agreedAmount', label: 'Agreed amount' },
   { name: 'amountPaid', label: 'Amount paid' },
   { name: 'paymentDueDate', label: 'Payment due date' },
-  { name: 'pipelineStage', label: 'Pipeline stage' },
   { name: 'bookingSource', label: 'Booking source' },
   { name: 'status', label: 'Status' },
   { name: 'location', label: 'Location' },
@@ -407,13 +430,20 @@ const buildMuiTheme = (mode: ColorMode) => {
   })
 }
 
+const getLocalDateInputValue = (date = new Date()) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 const emptyForm: EventFormValues = {
   name: '',
   agreedAmount: '',
   amountPaid: '',
   bookingSource: 'Unknown',
   clientName: '',
-  eventDate: '',
+  eventDate: getLocalDateInputValue(),
   eventType: '',
   eventTime: '',
   location: '',
@@ -465,6 +495,28 @@ const parseAmountInput = (value: string) => {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+const toTimeInputValue = (value: string) => {
+  const normalized = value.trim()
+  if (/^([01]\d|2[0-3]):[0-5]\d$/.test(normalized)) return normalized
+
+  const match = normalized.match(/^(1[0-2]|0?\d)(?::([0-5]\d))?\s*(am|pm)/i)
+  if (!match) return ''
+
+  let hours = Number(match[1]) % 12
+  if (match[3].toLowerCase() === 'pm') hours += 12
+  return `${String(hours).padStart(2, '0')}:${match[2] || '00'}`
+}
+
+const formatIngressTime = (value: string) => {
+  const timeValue = toTimeInputValue(value)
+  if (!timeValue) return value || 'Not set'
+  const [hours, minutes] = timeValue.split(':').map(Number)
+  return new Intl.DateTimeFormat('en-PH', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(2000, 0, 1, hours, minutes))
+}
+
 const normalizeEventRecord = (event: Partial<EventRecord>): EventRecord => ({
   id: event.id || `evt-${Date.now()}`,
   name: event.name || '',
@@ -487,6 +539,8 @@ const normalizeEventRecord = (event: Partial<EventRecord>): EventRecord => ({
         type: expenseTypes.includes(expense.type) ? expense.type : 'Others',
         amount: typeof expense.amount === 'number' && Number.isFinite(expense.amount) ? expense.amount : 0,
         note: expense.note || '',
+        crewId: expense.crewId || '',
+        crewName: expense.crewName || '',
       }))
     : [],
   expenseCount: typeof event.expenseCount === 'number' ? event.expenseCount : event.expenses?.length ?? 0,
@@ -503,6 +557,7 @@ const normalizeEventRecord = (event: Partial<EventRecord>): EventRecord => ({
 
 const toFormValues = (event: EventRecord): EventFormValues => ({
   ...event,
+  eventTime: toTimeInputValue(event.eventTime),
   agreedAmount: event.agreedAmount == null ? '' : String(event.agreedAmount),
   amountPaid: event.amountPaid == null ? '' : String(event.amountPaid),
 })
@@ -521,7 +576,6 @@ const fetchEventsFromApi = async (params: EventListParams, signal?: AbortSignal)
     limit: String(params.rowsPerPage),
     skip: String(params.page * params.rowsPerPage),
     savedView: params.savedView,
-    scheduled: String(!params.showUnscheduled),
     sortDirection: params.sortDirection,
     sortField: params.sortField,
   })
@@ -564,6 +618,7 @@ const fetchEventFacetsFromApi = async (signal?: AbortSignal) => {
   const body = (await response.json()) as { data?: Partial<EventFacets> }
 
   return {
+    crews: body.data?.crews ?? [],
     eventTypes: body.data?.eventTypes ?? [],
     packages: body.data?.packages ?? [],
     statuses: body.data?.statuses ?? [],
@@ -587,6 +642,8 @@ const fetchEventSummaryFromApi = async (yearFilter: string, signal?: AbortSignal
   return {
     activeCount: d?.activeCount ?? 0,
     bookedValue: d?.bookedValue ?? 0,
+    completedRevenue: d?.completedRevenue ?? 0,
+    totalExpenses: d?.totalExpenses ?? 0,
     scheduledCount: d?.scheduledCount ?? 0,
     currentMonthRevenue: d?.currentMonthRevenue ?? 0,
     topClient: d?.topClient ?? '-',
@@ -621,6 +678,8 @@ const createEventOption = async (kind: EventOptionKind, value: string) => {
     body: JSON.stringify({ kind, value }),
   })
   if (!response.ok) throw new Error(await readApiError(response))
+  const body = (await response.json()) as { data: { id: string; kind: EventOptionKind; value: string } }
+  return body.data
 }
 
 const deleteEventOption = async (kind: EventOptionKind, value: string) => {
@@ -628,6 +687,20 @@ const deleteEventOption = async (kind: EventOptionKind, value: string) => {
     method: 'DELETE',
   })
   if (!response.ok) throw new Error(await readApiError(response))
+}
+
+const fetchCrewPayrollFromApi = async (yearFilter: string, signal?: AbortSignal) => {
+  const searchParams = new URLSearchParams()
+  if (yearFilter !== 'All') searchParams.set('year', yearFilter)
+  const response = await fetch(`/api/events/analytics/crew?${searchParams.toString()}`, { signal })
+  if (!response.ok) throw new Error(await readApiError(response))
+  const body = (await response.json()) as {
+    data?: { crews?: CrewPayrollSummary[]; records?: CrewPayrollRecord[] }
+  }
+  return {
+    crews: body.data?.crews ?? [],
+    records: body.data?.records ?? [],
+  }
 }
 
 const deleteEventFromApi = async (eventId: string) => {
@@ -656,8 +729,7 @@ const getMonthDate = (monthKey: string) => new Date(`${monthKey}-01T00:00:00`)
 const average = (total: number, count: number) =>
   count === 0 ? 0 : Math.round(total / count)
 
-const hasSchedule = (event: EventRecord) =>
-  Boolean(event.eventDate.trim() && event.eventTime.trim())
+const hasSchedule = (event: EventRecord) => Boolean(event.eventDate.trim())
 
 const getBalance = (event: EventRecord) =>
   Math.max((event.agreedAmount ?? 0) - (event.amountPaid ?? 0), 0)
@@ -712,6 +784,9 @@ const summarizeGroup = (
 }
 
 const statusTone = (status: string) => {
+  if (normalizeStatus(status) === 'pencil book') {
+    return { bg: '#f5eadc', color: '#7c4a21', border: '#d6b98c' }
+  }
   if (isDone(status)) return { bg: '#ecfdf3', color: '#027a48', border: '#abefc6' }
   if (isCancelled(status)) return { bg: '#fff1f3', color: '#c01048', border: '#fecdd6' }
   return { bg: '#eff8ff', color: '#175cd3', border: '#b2ddff' }
@@ -990,14 +1065,14 @@ const EventTableSkeletonRows = ({
             <TableSkeletonLine width={74} />
           </TableCell>
         ) : null}
-        {visibleColumns.balance ? (
+        {visibleColumns.paid ? (
           <TableCell>
             <TableSkeletonLine width={70} />
           </TableCell>
         ) : null}
-        {visibleColumns.pipeline ? (
-          <TableCell sx={{ minWidth: 130 }}>
-            <TableSkeletonLine width={104} height={24} />
+        {visibleColumns.balance ? (
+          <TableCell>
+            <TableSkeletonLine width={70} />
           </TableCell>
         ) : null}
         {visibleColumns.source ? (
@@ -1022,6 +1097,7 @@ const EventTableSkeletonRows = ({
 )
 
 const EventDialog = ({
+  crewOptions,
   editingEvent,
   eventTypeOptions,
   initialTab,
@@ -1032,6 +1108,7 @@ const EventDialog = ({
   onOptionsChanged,
   onSave,
 }: {
+  crewOptions: CrewMember[]
   editingEvent: EventRecord | null
   eventTypeOptions: string[]
   initialTab: 'details' | 'expenses'
@@ -1050,6 +1127,7 @@ const EventDialog = ({
   const [expenseError, setExpenseError] = useState('')
   const [availableEventTypes, setAvailableEventTypes] = useState(eventTypeOptions)
   const [availablePackages, setAvailablePackages] = useState(packageOptions)
+  const [availableCrew, setAvailableCrew] = useState(crewOptions)
   const [eventTypeValue, setEventTypeValue] = useState(initialValues.eventType)
   const [packageValue, setPackageValue] = useState(initialValues.packageName)
   const [optionError, setOptionError] = useState('')
@@ -1063,7 +1141,7 @@ const EventDialog = ({
   )
 
   const handleOptionChange = async (
-    kind: EventOptionKind,
+    kind: Exclude<EventOptionKind, 'crew'>,
     option: string | NewEventOption | null,
   ) => {
     const setValue = kind === 'eventType' ? setEventTypeValue : setPackageValue
@@ -1092,14 +1170,48 @@ const EventDialog = ({
     }
   }
 
+  const handleCrewChange = async (
+    expenseId: string,
+    option: string | NewEventOption | null,
+  ) => {
+    if (!option) {
+      updateExpense(expenseId, { crewId: '', crewName: '' })
+      return
+    }
+
+    if (typeof option === 'string') {
+      const crew = availableCrew.find((member) => member.name === option)
+      updateExpense(expenseId, { crewId: crew?.id || '', crewName: option })
+      return
+    }
+
+    setSavingOption(true)
+    setOptionError('')
+    try {
+      const created = await createEventOption('crew', option.inputValue)
+      const crew = { id: created.id, name: created.value }
+      setAvailableCrew((current) => [...current, crew].sort((a, b) => a.name.localeCompare(b.name)))
+      updateExpense(expenseId, { crewId: crew.id, crewName: crew.name })
+      onOptionsChanged()
+    } catch (error) {
+      setOptionError(error instanceof Error ? error.message : 'Failed to add crew member')
+    } finally {
+      setSavingOption(false)
+    }
+  }
+
   const handleDeleteOption = async () => {
     if (!optionToDelete) return
     setDeletingOption(true)
     setOptionError('')
     try {
       await deleteEventOption(optionToDelete.kind, optionToDelete.value)
-      const setOptions = optionToDelete.kind === 'eventType' ? setAvailableEventTypes : setAvailablePackages
-      setOptions((current) => current.filter((value) => value !== optionToDelete.value))
+      if (optionToDelete.kind === 'crew') {
+        setAvailableCrew((current) => current.filter((member) => member.name !== optionToDelete.value))
+      } else {
+        const setOptions = optionToDelete.kind === 'eventType' ? setAvailableEventTypes : setAvailablePackages
+        setOptions((current) => current.filter((value) => value !== optionToDelete.value))
+      }
       setOptionToDelete(null)
       onOptionsChanged()
     } catch (error) {
@@ -1112,7 +1224,7 @@ const EventDialog = ({
   const addExpense = () => {
     setExpenses((current) => [
       ...current,
-      { id: `expense-${Date.now()}`, type: 'Crew salary', amount: '', note: '' },
+      { id: `expense-${Date.now()}`, type: 'Crew salary', amount: '', note: '', crewId: '', crewName: '' },
     ])
   }
 
@@ -1137,6 +1249,11 @@ const EventDialog = ({
 
     if (expenses.some((expense) => expense.amount.trim() === '') || normalizedExpenses.some((expense) => !Number.isFinite(expense.amount) || expense.amount < 0)) {
       setExpenseError('Enter a valid amount of zero or greater for every expense.')
+      setActiveTab('expenses')
+      return
+    }
+    if (expenses.some((expense) => expense.type === 'Crew salary' && !expense.crewId)) {
+      setExpenseError('Select a crew member for every crew salary expense.')
       setActiveTab('expenses')
       return
     }
@@ -1319,22 +1436,32 @@ const EventDialog = ({
                   type={
                     name === 'eventDate' || name === 'paymentDueDate'
                       ? 'date'
+                      : name === 'eventTime'
+                        ? 'time'
                       : name === 'agreedAmount' || name === 'amountPaid'
                         ? 'number'
                         : 'text'
                   }
-                  select={name === 'pipelineStage' || name === 'bookingSource'}
+                  select={name === 'status' || name === 'bookingSource'}
                   defaultValue={initialValues[name]}
                   required={name === 'name' || name === 'eventDate'}
                   multiline={name === 'notes'}
                   minRows={name === 'notes' ? 3 : undefined}
                   sx={{ gridColumn: name === 'location' || name === 'notes' ? '1 / -1' : undefined }}
-                  slotProps={name === 'eventDate' || name === 'paymentDueDate' ? { inputLabel: { shrink: true } } : undefined}
+                  slotProps={name === 'eventDate' || name === 'paymentDueDate' || name === 'eventTime'
+                    ? {
+                        inputLabel: { shrink: true },
+                        htmlInput: {
+                          ...(name === 'eventTime' ? { step: 300 } : {}),
+                          onClick: (event: MouseEvent<HTMLInputElement>) => event.currentTarget.showPicker?.(),
+                        },
+                      }
+                    : undefined}
                 >
-                  {name === 'pipelineStage'
-                    ? pipelineStages.map((stage) => (
-                        <MenuItem key={stage} value={stage}>
-                          {stage}
+                  {name === 'status'
+                    ? Array.from(new Set([...eventStatuses, initialValues.status])).map((status) => (
+                        <MenuItem key={status} value={status}>
+                          {status}
                         </MenuItem>
                       ))
                     : null}
@@ -1389,7 +1516,12 @@ const EventDialog = ({
                     key={expense.id}
                     sx={{
                       display: 'grid',
-                      gridTemplateColumns: { xs: '1fr auto', sm: '180px 150px 1fr auto' },
+                      gridTemplateColumns: {
+                        xs: '1fr auto',
+                        sm: expense.type === 'Crew salary'
+                          ? '170px 170px 130px 1fr auto'
+                          : '180px 150px 1fr auto',
+                      },
                       gap: 1,
                       alignItems: 'center',
                       p: 1.25,
@@ -1401,10 +1533,86 @@ const EventDialog = ({
                       select
                       label='Expense type'
                       value={expense.type}
-                      onChange={(event) => updateExpense(expense.id, { type: event.target.value as ExpenseType })}
+                      onChange={(event) => {
+                        const type = event.target.value as ExpenseType
+                        updateExpense(expense.id, {
+                          type,
+                          ...(type === 'Crew salary' ? {} : { crewId: '', crewName: '' }),
+                        })
+                      }}
                     >
                       {expenseTypes.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}
                     </TextField>
+                    {expense.type === 'Crew salary' ? (
+                      <Autocomplete<string | NewEventOption, false, false, true>
+                        freeSolo
+                        selectOnFocus
+                        clearOnBlur
+                        disabled={savingOption || deletingOption}
+                        options={availableCrew.map((crew) => crew.name)}
+                        value={expense.crewName}
+                        filterOptions={(options, params) => {
+                          const inputValue = params.inputValue.trim()
+                          const normalizedInput = inputValue.toLocaleLowerCase()
+                          const filtered = options.filter((option) => (
+                            typeof option === 'string'
+                            && (!normalizedInput || option.toLocaleLowerCase().includes(normalizedInput))
+                          ))
+                          const exactMatch = availableCrew.some(
+                            (crew) => crew.name.toLocaleLowerCase() === normalizedInput,
+                          )
+                          if (inputValue && !exactMatch) {
+                            filtered.push({
+                              inputValue,
+                              label: `Add “${inputValue}” as crew`,
+                              isNew: true,
+                            })
+                          }
+                          return filtered
+                        }}
+                        getOptionLabel={(option) => typeof option === 'string' ? option : option.label}
+                        onChange={(_, option) => void handleCrewChange(expense.id, option)}
+                        renderOption={(props, option) => (
+                          <Box
+                            component='li'
+                            {...props}
+                            sx={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              gap: 1,
+                              '& .delete-crew-option': { opacity: 0 },
+                              '&:hover .delete-crew-option, &:focus-within .delete-crew-option': { opacity: 1 },
+                            }}
+                          >
+                            {typeof option === 'string' ? (
+                              <>
+                                <Typography sx={{ fontSize: 14 }}>{option}</Typography>
+                                <IconButton
+                                  className='delete-crew-option'
+                                  size='small'
+                                  tabIndex={-1}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    setOptionToDelete({ kind: 'crew', value: option })
+                                  }}
+                                  sx={{ color: '#f43f5e' }}
+                                >
+                                  <FiX size={15} />
+                                </IconButton>
+                              </>
+                            ) : (
+                              <Stack direction='row' spacing={1} sx={{ alignItems: 'center' }}>
+                                <FiPlus />
+                                <Typography sx={{ fontSize: 14, fontWeight: 650 }}>{option.label}</Typography>
+                              </Stack>
+                            )}
+                          </Box>
+                        )}
+                        renderInput={(params) => <TextField {...params} label='Crew member' />}
+                      />
+                    ) : null}
                     <TextField
                       label='Amount'
                       type='number'
@@ -1485,7 +1693,11 @@ const EventDialog = ({
           }}
         >
           <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
-            Delete {optionToDelete.kind === 'eventType' ? 'event type' : 'package'}?
+            Delete {optionToDelete.kind === 'eventType'
+              ? 'event type'
+              : optionToDelete.kind === 'crew'
+                ? 'crew member'
+                : 'package'}?
           </DialogTitle>
           <DialogContent>
             <Typography sx={{ color: theme.muted, fontSize: 14 }}>
@@ -1524,6 +1736,7 @@ const BusinessManager = () => {
   const [eventsRevision, setEventsRevision] = useState(0)
   const [facetsRevision, setFacetsRevision] = useState(0)
   const [eventFacets, setEventFacets] = useState<EventFacets>({
+    crews: [],
     eventTypes: [],
     packages: [],
     statuses: [],
@@ -1532,6 +1745,8 @@ const BusinessManager = () => {
   const [eventSummary, setEventSummary] = useState<EventSummary>({
     activeCount: 0,
     bookedValue: 0,
+    completedRevenue: 0,
+    totalExpenses: 0,
     scheduledCount: 0,
     currentMonthRevenue: 0,
     topClient: '-',
@@ -1548,6 +1763,9 @@ const BusinessManager = () => {
   const [confirmDoneEvent, setConfirmDoneEvent] = useState<EventRecord | null>(null)
   const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<EventRecord | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('events')
+  const [analyticsTab, setAnalyticsTab] = useState<'business' | 'crew'>('business')
+  const [crewPayroll, setCrewPayroll] = useState<{ crews: CrewPayrollSummary[]; records: CrewPayrollRecord[] }>({ crews: [], records: [] })
+  const [crewPayrollLoading, setCrewPayrollLoading] = useState(false)
   const [query, setQuery] = useState('')
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [statusFilter, setStatusFilter] = useState('All')
@@ -1555,7 +1773,6 @@ const BusinessManager = () => {
   const [eventTypeFilter, setEventTypeFilter] = useState('All')
   const [yearFilter, setYearFilter] = useState('All')
   const [savedView, setSavedView] = useState<SavedView>('all')
-  const [showUnscheduled, setShowUnscheduled] = useState(false)
   const [hideDone, setHideDone] = useState(true)
   const [sortField, setSortField] = useState<SortField>('eventDate')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
@@ -1567,8 +1784,8 @@ const BusinessManager = () => {
     type: true,
     package: true,
     amount: true,
+    paid: true,
     balance: true,
-    pipeline: true,
     source: false,
     status: true,
   })
@@ -1594,7 +1811,6 @@ const BusinessManager = () => {
       query: deferredQuery,
       rowsPerPage,
       savedView,
-      showUnscheduled,
       sortDirection,
       sortField,
       statusFilter,
@@ -1608,7 +1824,6 @@ const BusinessManager = () => {
       deferredQuery,
       rowsPerPage,
       savedView,
-      showUnscheduled,
       sortDirection,
       sortField,
       statusFilter,
@@ -1665,6 +1880,22 @@ const BusinessManager = () => {
 
     return () => controller.abort()
   }, [eventsRevision, yearFilter])
+
+  useEffect(() => {
+    if (viewMode !== 'analytics') return
+    const controller = new AbortController()
+    setCrewPayrollLoading(true)
+    fetchCrewPayrollFromApi(yearFilter, controller.signal)
+      .then(setCrewPayroll)
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setEventsError(error instanceof Error ? error.message : 'Failed to load crew payroll')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCrewPayrollLoading(false)
+      })
+    return () => controller.abort()
+  }, [eventsRevision, viewMode, yearFilter])
 
   const statusOptions = useMemo(
     () => ['All', ...eventFacets.statuses],
@@ -1842,26 +2073,28 @@ const topLocations = useMemo(() => {
       .slice(0, 6)
   }, [events, yearFilter])
 
-  const pipelineMix = useMemo(() => {
+  const workflowStatusMix = useMemo(() => {
     const totals = new Map<string, { count: number; revenue: number }>()
 
     events.forEach((event) => {
       if (!hasSchedule(event)) return
       if (yearFilter !== 'All' && getEventYear(event) !== yearFilter) return
 
-      const key = event.pipelineStage || inferPipelineStage(event.status)
+      const key = eventStatuses.includes(event.status)
+        ? event.status
+        : inferPipelineStage(event.status)
       const current = totals.get(key) ?? { count: 0, revenue: 0 }
       current.count += 1
       current.revenue += event.agreedAmount ?? 0
       totals.set(key, current)
     })
 
-    return pipelineStages
+    return eventStatuses
       .map((stage) => [stage, totals.get(stage) ?? { count: 0, revenue: 0 }] as const)
       .filter(([, value]) => value.count > 0)
   }, [events, yearFilter])
 
-  const yearlyPipeline = useMemo(() => {
+  const yearlyRevenue = useMemo(() => {
     const totals = new Map<string, { revenue: number; count: number }>()
 
     events.forEach((event) => {
@@ -1976,7 +2209,7 @@ const topLocations = useMemo(() => {
     setMarkingDoneId(event.id)
     setEventsError('')
     try {
-      const updated: EventRecord = { ...event, status: 'Done', pipelineStage: 'Completed' }
+      const updated: EventRecord = { ...event, status: 'Completed', pipelineStage: 'Completed' }
       await saveEventToApi(updated, event.id)
       setEventsRevision((current) => current + 1)
       setFacetsRevision((current) => current + 1)
@@ -1993,6 +2226,7 @@ const topLocations = useMemo(() => {
       id: editingEvent?.id ?? `evt-${Date.now()}`,
       agreedAmount: parseAmountInput(values.agreedAmount),
       amountPaid: parseAmountInput(values.amountPaid),
+      pipelineStage: inferPipelineStage(values.status),
       expenses,
       expenseCount: expenses.length,
       expenseTotal: expenses.reduce((total, expense) => total + expense.amount, 0),
@@ -2029,12 +2263,12 @@ const topLocations = useMemo(() => {
     ...sourceRevenue.map(([, value]) => value.revenue),
     1,
   )
-  const maxPipelineCount = Math.max(
-    ...pipelineMix.map(([, value]) => value.count),
+  const maxWorkflowStatusCount = Math.max(
+    ...workflowStatusMix.map(([, value]) => value.count),
     1,
   )
-  const maxYearlyPipeline = Math.max(
-    ...yearlyPipeline.map(([, value]) => value.revenue),
+  const maxYearlyRevenue = Math.max(
+    ...yearlyRevenue.map(([, value]) => value.revenue),
     1,
   )
   const averageCompletedBooking = average(completedRevenue, doneEvents.length)
@@ -2271,7 +2505,7 @@ const topLocations = useMemo(() => {
           aria-label='Business summary metrics'
           sx={{
             display: { xs: 'flex', sm: 'grid' },
-            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(6, 1fr)' },
+            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' },
             overflowX: { xs: 'auto', sm: 'visible' },
             overscrollBehaviorX: 'contain',
             scrollSnapType: { xs: 'x mandatory', sm: 'none' },
@@ -2284,10 +2518,22 @@ const topLocations = useMemo(() => {
           }}
         >
           <DashboardMetric
-            label='Booked value'
+            label='Completed event income'
+            value={peso.format(eventSummary.completedRevenue)}
+            detail={`Income from completed, non-cancelled events${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
+            accent='#34d399'
+          />
+          <DashboardMetric
+            label='Total event income'
             value={peso.format(eventSummary.bookedValue)}
-            detail={`Total earnings from ${eventSummary.activeCount} events on record${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
+            detail={`All ${eventSummary.activeCount} non-cancelled events, including upcoming bookings${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
             accent='var(--accent)'
+          />
+          <DashboardMetric
+            label='Total expenses'
+            value={peso.format(eventSummary.totalExpenses)}
+            detail={`All recorded event expenses${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
+            accent='#f43f5e'
           />
           <DashboardMetric
             label='Earnings this month'
@@ -2642,29 +2888,6 @@ const topLocations = useMemo(() => {
                 <MenuItem value='asc'>Ascending</MenuItem>
                 <MenuItem value='desc'>Descending</MenuItem>
               </TextField>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    size='small'
-                    checked={showUnscheduled}
-                    onChange={(event) => {
-                      setShowUnscheduled(event.target.checked)
-                      setPage(0)
-                    }}
-                  />
-                }
-                label='Show unscheduled'
-                sx={{
-                  display: { xs: mobileFiltersOpen ? 'inline-flex' : 'none', md: 'inline-flex' },
-                  gridColumn: { xs: '1 / -1', md: 'auto' },
-                  alignSelf: 'center',
-                  color: 'var(--muted)',
-                  '& .MuiFormControlLabel-label': {
-                    fontSize: 12.5,
-                    fontWeight: 620,
-                  },
-                }}
-              />
             </Box>
 
             <TableContainer sx={{ maxHeight: 620 }}>
@@ -2761,7 +2984,7 @@ const topLocations = useMemo(() => {
                         {visibleColumns.date ? (
                           <TableCell sx={{ whiteSpace: 'nowrap' }}>
                             <Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>{event.eventDate || 'No date'}</Typography>
-                            <Typography sx={{ fontSize: 12, color: 'var(--muted)' }}>{event.eventTime || 'No time'}</Typography>
+                            <Typography sx={{ fontSize: 12, color: 'var(--muted)' }}>Ingress: {formatIngressTime(event.eventTime)}</Typography>
                           </TableCell>
                         ) : null}
                         {visibleColumns.client ? (
@@ -2797,18 +3020,14 @@ const topLocations = useMemo(() => {
                             {event.agreedAmount == null ? '-' : peso.format(event.agreedAmount)}
                           </TableCell>
                         ) : null}
+                        {visibleColumns.paid ? (
+                          <TableCell sx={{ fontWeight: 650, whiteSpace: 'nowrap', fontSize: 12.5, color: 'var(--muted)' }}>
+                            {event.amountPaid == null ? '-' : peso.format(event.amountPaid)}
+                          </TableCell>
+                        ) : null}
                         {visibleColumns.balance ? (
                           <TableCell sx={{ fontWeight: 650, whiteSpace: 'nowrap', fontSize: 12.5, color: getBalance(event) > 0 ? '#f43f5e' : 'var(--muted)' }}>
                             {event.agreedAmount == null ? '-' : peso.format(getBalance(event))}
-                          </TableCell>
-                        ) : null}
-                        {visibleColumns.pipeline ? (
-                          <TableCell sx={{ minWidth: 130 }}>
-                            <Chip
-                              label={event.pipelineStage || inferPipelineStage(event.status)}
-                              size='small'
-                              variant='outlined'
-                            />
                           </TableCell>
                         ) : null}
                         {visibleColumns.source ? (
@@ -3041,7 +3260,7 @@ const topLocations = useMemo(() => {
                   >
                     <Typography sx={{ fontWeight: 650, color: 'var(--text)' }}>{event.name}</Typography>
                     <Typography sx={{ fontSize: 13, color: 'var(--muted)' }}>
-                      {event.eventDate} | {event.eventTime || 'No time'}
+                      {event.eventDate} | Ingress: {formatIngressTime(event.eventTime)}
                     </Typography>
                   </Box>
                 ))}
@@ -3052,6 +3271,23 @@ const topLocations = useMemo(() => {
 
         {viewMode === 'analytics' ? (
           <>
+            <Box component={Card} sx={{ display: 'flex', alignItems: 'center', gap: 1, background: 'var(--panel)', mb: 2, px: { xs: 1, md: 2 } }}>
+              <Tabs value={analyticsTab} onChange={(_, value: 'business' | 'crew') => setAnalyticsTab(value)} sx={{ flex: 1 }}>
+                <Tab value='business' label='Business analytics' />
+                <Tab value='crew' label='Crew payroll' />
+              </Tabs>
+              <TextField
+                select
+                size='small'
+                label='Year'
+                value={yearFilter}
+                onChange={(event) => setYearFilter(event.target.value)}
+                sx={{ minWidth: 110 }}
+              >
+                {yearOptions.map((year) => <MenuItem key={year} value={year}>{year}</MenuItem>)}
+              </TextField>
+            </Box>
+            <Box sx={{ display: analyticsTab === 'business' ? 'contents' : 'none' }}>
             <Box
               component={Card}
               sx={{
@@ -3066,7 +3302,7 @@ const topLocations = useMemo(() => {
               }}
             >
               <Typography sx={{ fontSize: 13, fontWeight: 650, color: 'var(--text)', marginRight: '0.25rem' }}>
-                Pipeline year
+                Revenue year
               </Typography>
               <TextField
                 select
@@ -3082,7 +3318,7 @@ const topLocations = useMemo(() => {
                 ))}
               </TextField>
               <Typography sx={{ fontSize: 12.5, color: 'var(--muted)' }}>
-                Analytics exclude records without both date and time.
+                Analytics exclude only records without an event date.
               </Typography>
             </Box>
             <Box
@@ -3093,17 +3329,17 @@ const topLocations = useMemo(() => {
               }}
             >
             <AnalyticsCard
-              title='Active pipeline by year'
+              title='Active revenue by year'
               description='Non-cancelled scheduled revenue grouped by event year.'
             >
               <Stack spacing={1.1} sx={{ marginTop: '1.3rem' }}>
-                {yearlyPipeline.map(([year, value]) => (
+                {yearlyRevenue.map(([year, value]) => (
                   <DataBar
                     key={year}
                     label={year}
                     value={peso.format(value.revenue)}
                     helper={`${value.count} active events | avg ${peso.format(average(value.revenue, value.count))}`}
-                    percentage={(value.revenue / maxYearlyPipeline) * 100}
+                    percentage={(value.revenue / maxYearlyRevenue) * 100}
                     color='linear-gradient(90deg, var(--accent3), var(--accent))'
                   />
                 ))}
@@ -3173,17 +3409,17 @@ const topLocations = useMemo(() => {
             </AnalyticsCard>
 
             <AnalyticsCard
-              title='Pipeline stages'
-              description='Stage distribution using the standardized sales pipeline.'
+              title='Event statuses'
+              description='Distribution using the standardized event workflow.'
             >
               <Stack spacing={1.1} sx={{ marginTop: '1.3rem' }}>
-                {pipelineMix.map(([stage, value]) => (
+                {workflowStatusMix.map(([stage, value]) => (
                   <DataBar
                     key={stage}
                     label={stage}
                     value={`${value.count} events`}
                     helper={peso.format(value.revenue)}
-                    percentage={(value.count / maxPipelineCount) * 100}
+                    percentage={(value.count / maxWorkflowStatusCount) * 100}
                     color={
                       stage === 'Cancelled' || stage === 'Lost'
                         ? 'linear-gradient(90deg, #fb7185, #f43f5e)'
@@ -3305,6 +3541,92 @@ const topLocations = useMemo(() => {
               </Box>
             </AnalyticsCard>
             </Box>
+            </Box>
+
+            {analyticsTab === 'crew' ? (
+              <Stack spacing={2}>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
+                    gap: 1.5,
+                  }}
+                >
+                  {[
+                    ['Crew members paid', crewPayroll.crews.length],
+                    ['Salary payments', crewPayroll.records.length],
+                    ['Total crew payroll', peso.format(crewPayroll.crews.reduce((sum, crew) => sum + crew.totalIncome, 0))],
+                  ].map(([label, value]) => (
+                    <Card key={label} sx={{ background: 'var(--panel)', p: 2 }}>
+                      <Typography sx={{ color: 'var(--muted)', fontSize: 12, fontWeight: 650, textTransform: 'uppercase' }}>
+                        {label}
+                      </Typography>
+                      <Typography sx={{ color: 'var(--text)', fontSize: 25, fontWeight: 700, mt: 0.5 }}>
+                        {value}
+                      </Typography>
+                    </Card>
+                  ))}
+                </Box>
+
+                <AnalyticsCard
+                  title='Crew earnings'
+                  description='Total salary recorded per crew member for the selected year.'
+                >
+                  {crewPayrollLoading ? (
+                    <Skeleton variant='rounded' height={180} sx={{ mt: 2 }} />
+                  ) : crewPayroll.crews.length === 0 ? (
+                    <Typography sx={{ color: 'var(--muted)', mt: 2 }}>No crew salary records for this period.</Typography>
+                  ) : (
+                    <Stack spacing={1.1} sx={{ mt: 2 }}>
+                      {crewPayroll.crews.map((crew) => (
+                        <DataBar
+                          key={crew.crewId}
+                          label={crew.crewName}
+                          value={peso.format(crew.totalIncome)}
+                          helper={`${crew.paymentCount} payments across ${crew.eventCount} events`}
+                          percentage={(crew.totalIncome / Math.max(...crewPayroll.crews.map((item) => item.totalIncome), 1)) * 100}
+                          color='linear-gradient(90deg, var(--accent3), var(--accent))'
+                        />
+                      ))}
+                    </Stack>
+                  )}
+                </AnalyticsCard>
+
+                <Box component={Card} sx={{ background: 'var(--panel)', overflow: 'hidden' }}>
+                  <Box sx={{ p: 2, borderBottom: '1px solid var(--borderSoft)' }}>
+                    <Typography sx={{ color: 'var(--text)', fontSize: 18, fontWeight: 700 }}>Salary records</Typography>
+                    <Typography sx={{ color: 'var(--muted)', fontSize: 13 }}>Individual crew payments recorded against events.</Typography>
+                  </Box>
+                  <TableContainer sx={{ maxHeight: 440 }}>
+                    <Table stickyHeader size='small'>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Crew</TableCell>
+                          <TableCell>Event</TableCell>
+                          <TableCell>Date</TableCell>
+                          <TableCell>Note</TableCell>
+                          <TableCell align='right'>Income</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {crewPayroll.records.map((record, index) => (
+                          <TableRow key={`${record.eventId}-${record.crewId}-${index}`}>
+                            <TableCell sx={{ fontWeight: 650 }}>{record.crewName}</TableCell>
+                            <TableCell>{record.eventName || 'Untitled event'}</TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap' }}>{record.eventDate || 'No date'}</TableCell>
+                            <TableCell>{record.note || '-'}</TableCell>
+                            <TableCell align='right' sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{peso.format(record.amount)}</TableCell>
+                          </TableRow>
+                        ))}
+                        {!crewPayrollLoading && crewPayroll.records.length === 0 ? (
+                          <TableRow><TableCell colSpan={5} align='center' sx={{ py: 4, color: 'var(--muted)' }}>No salary records found.</TableCell></TableRow>
+                        ) : null}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              </Stack>
+            ) : null}
           </>
         ) : null}
 
@@ -3453,11 +3775,6 @@ const topLocations = useMemo(() => {
                     border: `1px solid ${statusTone(calendarEventDetails.status).border}`,
                   }}
                 />
-                <Chip
-                  label={calendarEventDetails.pipelineStage || inferPipelineStage(calendarEventDetails.status)}
-                  size='small'
-                  variant='outlined'
-                />
               </Stack>
             </DialogTitle>
             <DialogContent>
@@ -3471,7 +3788,7 @@ const topLocations = useMemo(() => {
               >
                 {[
                   ['Date', calendarEventDetails.eventDate || 'No date'],
-                  ['Time', calendarEventDetails.eventTime || 'No time'],
+                  ['Ingress time', formatIngressTime(calendarEventDetails.eventTime)],
                   ['Client', calendarEventDetails.clientName || 'No client'],
                   ['Venue', calendarEventDetails.location || 'No location'],
                   ['Event type', calendarEventDetails.eventType || 'Unspecified'],
@@ -3543,6 +3860,7 @@ const topLocations = useMemo(() => {
       {dialogOpen ? (
         <EventDialog
           key={editingEvent?.id ?? 'new-event'}
+          crewOptions={eventFacets.crews}
           editingEvent={editingEvent}
           eventTypeOptions={eventFacets.eventTypes}
           initialTab={dialogInitialTab}
