@@ -1311,6 +1311,7 @@ const BusinessManager = () => {
   const [deletingEventId, setDeletingEventId] = useState('')
   const [markingDoneId, setMarkingDoneId] = useState('')
   const [confirmDoneEvent, setConfirmDoneEvent] = useState<EventRecord | null>(null)
+  const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<EventRecord | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('events')
   const [query, setQuery] = useState('')
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
@@ -1720,6 +1721,7 @@ const topLocations = useMemo(() => {
 
     try {
       await deleteEventFromApi(eventId)
+      setConfirmDeleteEvent(null)
       setCalendarEventDetails((current) => (current?.id === eventId ? null : current))
       setEventsRevision((current) => current + 1)
       setFacetsRevision((current) => current + 1)
@@ -2612,7 +2614,7 @@ const topLocations = useMemo(() => {
                           </IconButton>
                           <IconButton
                             sx={{ color: '#f43f5e' }}
-                            onClick={() => void handleDelete(event.id)}
+                            onClick={() => setConfirmDeleteEvent(event)}
                             disabled={deletingEventId === event.id}
                             aria-label={`Delete ${event.name}`}
                           >
@@ -3365,6 +3367,59 @@ const topLocations = useMemo(() => {
               }}
             >
               Yes, mark done
+            </Button>
+          </DialogActions>
+        </Dialog>
+      ) : null}
+      {confirmDeleteEvent ? (
+        <Dialog
+          open
+          onClose={() => {
+            if (!deletingEventId) setConfirmDeleteEvent(null)
+          }}
+          maxWidth='xs'
+          fullWidth
+          slotProps={{
+            paper: {
+              sx: {
+                background: theme.panel,
+                border: `1px solid ${theme.border}`,
+                borderRadius: '8px',
+              },
+            },
+          }}
+        >
+          <DialogTitle sx={{ fontWeight: 700, color: theme.text, pb: 1 }}>
+            Delete event?
+          </DialogTitle>
+          <DialogContent>
+            <Typography sx={{ color: theme.muted, fontSize: 14 }}>
+              This will permanently delete <strong style={{ color: theme.text }}>{confirmDeleteEvent.name || 'this event'}</strong> and its expense records. This action cannot be undone.
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+            <Button
+              onClick={() => setConfirmDeleteEvent(null)}
+              variant='outlined'
+              disabled={Boolean(deletingEventId)}
+              sx={{ borderColor: theme.border, color: theme.text, textTransform: 'none', fontWeight: 620 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handleDelete(confirmDeleteEvent.id)}
+              variant='contained'
+              disabled={deletingEventId === confirmDeleteEvent.id}
+              sx={{
+                background: '#e11d48',
+                color: '#fff',
+                textTransform: 'none',
+                fontWeight: 650,
+                boxShadow: 'none',
+                '&:hover': { background: '#be123c', boxShadow: 'none' },
+              }}
+            >
+              {deletingEventId === confirmDeleteEvent.id ? 'Deleting...' : 'Delete event'}
             </Button>
           </DialogActions>
         </Dialog>
