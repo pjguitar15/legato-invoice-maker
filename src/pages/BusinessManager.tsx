@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import {
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -50,6 +51,7 @@ import {
   FiSearch,
   FiSun,
   FiTrash2,
+  FiX,
 } from 'react-icons/fi'
 
 const expenseTypes = [
@@ -71,6 +73,8 @@ type EventExpense = {
 }
 
 type EventExpenseFormValue = Omit<EventExpense, 'amount'> & { amount: string }
+type EventOptionKind = 'eventType' | 'package'
+type NewEventOption = { inputValue: string; label: string; isNew: true }
 
 type EventRecord = {
   id: string
@@ -610,6 +614,22 @@ const saveEventToApi = async (event: EventRecord, editingId?: string) => {
   return normalizeEventRecord(body.data ?? event)
 }
 
+const createEventOption = async (kind: EventOptionKind, value: string) => {
+  const response = await fetch('/api/events/options', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind, value }),
+  })
+  if (!response.ok) throw new Error(await readApiError(response))
+}
+
+const deleteEventOption = async (kind: EventOptionKind, value: string) => {
+  const response = await fetch(`/api/events/options/${kind}?value=${encodeURIComponent(value)}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) throw new Error(await readApiError(response))
+}
+
 const deleteEventFromApi = async (eventId: string) => {
   const response = await fetch(`/api/events/${eventId}`, { method: 'DELETE' })
 
@@ -1003,17 +1023,23 @@ const EventTableSkeletonRows = ({
 
 const EventDialog = ({
   editingEvent,
+  eventTypeOptions,
   initialTab,
+  packageOptions,
   savingEvent,
   theme,
   onClose,
+  onOptionsChanged,
   onSave,
 }: {
   editingEvent: EventRecord | null
+  eventTypeOptions: string[]
   initialTab: 'details' | 'expenses'
+  packageOptions: string[]
   savingEvent: boolean
   theme: ManagerTheme
   onClose: () => void
+  onOptionsChanged: () => void
   onSave: (values: EventFormValues, expenses: EventExpense[]) => Promise<void>
 }) => {
   const initialValues = editingEvent ? toFormValues(editingEvent) : emptyForm
@@ -1022,7 +1048,66 @@ const EventDialog = ({
     () => editingEvent?.expenses.map((expense) => ({ ...expense, amount: String(expense.amount) })) ?? [],
   )
   const [expenseError, setExpenseError] = useState('')
+  const [availableEventTypes, setAvailableEventTypes] = useState(eventTypeOptions)
+  const [availablePackages, setAvailablePackages] = useState(packageOptions)
+  const [eventTypeValue, setEventTypeValue] = useState(initialValues.eventType)
+  const [packageValue, setPackageValue] = useState(initialValues.packageName)
+  const [optionError, setOptionError] = useState('')
+  const [savingOption, setSavingOption] = useState(false)
+  const [deletingOption, setDeletingOption] = useState(false)
+  const [optionToDelete, setOptionToDelete] = useState<{ kind: EventOptionKind; value: string } | null>(null)
   const expenseTotal = expenses.reduce((total, expense) => total + (Number(expense.amount) || 0), 0)
+
+  const getOptionValue = (option: string | NewEventOption) => (
+    typeof option === 'string' ? option : option.inputValue
+  )
+
+  const handleOptionChange = async (
+    kind: EventOptionKind,
+    option: string | NewEventOption | null,
+  ) => {
+    const setValue = kind === 'eventType' ? setEventTypeValue : setPackageValue
+    if (!option) {
+      setValue('')
+      return
+    }
+
+    if (typeof option === 'string') {
+      setValue(option)
+      return
+    }
+
+    setSavingOption(true)
+    setOptionError('')
+    try {
+      await createEventOption(kind, option.inputValue)
+      const setOptions = kind === 'eventType' ? setAvailableEventTypes : setAvailablePackages
+      setOptions((current) => [...current, option.inputValue].sort((a, b) => a.localeCompare(b)))
+      setValue(option.inputValue)
+      onOptionsChanged()
+    } catch (error) {
+      setOptionError(error instanceof Error ? error.message : 'Failed to add option')
+    } finally {
+      setSavingOption(false)
+    }
+  }
+
+  const handleDeleteOption = async () => {
+    if (!optionToDelete) return
+    setDeletingOption(true)
+    setOptionError('')
+    try {
+      await deleteEventOption(optionToDelete.kind, optionToDelete.value)
+      const setOptions = optionToDelete.kind === 'eventType' ? setAvailableEventTypes : setAvailablePackages
+      setOptions((current) => current.filter((value) => value !== optionToDelete.value))
+      setOptionToDelete(null)
+      onOptionsChanged()
+    } catch (error) {
+      setOptionError(error instanceof Error ? error.message : 'Failed to delete option')
+    } finally {
+      setDeletingOption(false)
+    }
+  }
 
   const addExpense = () => {
     setExpenses((current) => [
@@ -1080,6 +1165,9 @@ const EventDialog = ({
       <Box
         component='form'
         onSubmit={handleSubmit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.preventDefault()
+        }}
         sx={{
           '& .MuiOutlinedInput-root': {
             background: theme.field,
@@ -1116,6 +1204,11 @@ const EventDialog = ({
               disabled={!editingEvent}
             />
           </Tabs>
+          {optionError ? (
+            <Typography sx={{ color: '#f43f5e', fontSize: 13, fontWeight: 650, mb: 1.5 }}>
+              {optionError}
+            </Typography>
+          ) : null}
           <Box
             sx={{
               display: activeTab === 'details' ? 'grid' : 'none',
@@ -1124,42 +1217,137 @@ const EventDialog = ({
               paddingTop: 1,
             }}
           >
-            {eventFormFields.map(({ name, label }) => (
-              <TextField
-                key={name}
-                name={name}
-                label={label}
-                type={
-                  name === 'eventDate' || name === 'paymentDueDate'
-                    ? 'date'
-                    : name === 'agreedAmount' || name === 'amountPaid'
-                      ? 'number'
-                      : 'text'
-                }
-                select={name === 'pipelineStage' || name === 'bookingSource'}
-                defaultValue={initialValues[name]}
-                required={name === 'name' || name === 'eventDate'}
-                multiline={name === 'notes'}
-                minRows={name === 'notes' ? 3 : undefined}
-                sx={{ gridColumn: name === 'location' || name === 'notes' ? '1 / -1' : undefined }}
-                slotProps={name === 'eventDate' || name === 'paymentDueDate' ? { inputLabel: { shrink: true } } : undefined}
-              >
-                {name === 'pipelineStage'
-                  ? pipelineStages.map((stage) => (
-                      <MenuItem key={stage} value={stage}>
-                        {stage}
-                      </MenuItem>
-                    ))
-                  : null}
-                {name === 'bookingSource'
-                  ? bookingSources.map((source) => (
-                      <MenuItem key={source} value={source}>
-                        {source}
-                      </MenuItem>
-                    ))
-                  : null}
-              </TextField>
-            ))}
+            {eventFormFields.map(({ name, label }) => {
+              if (name === 'eventType' || name === 'packageName') {
+                const kind: EventOptionKind = name === 'eventType' ? 'eventType' : 'package'
+                const options = name === 'eventType' ? availableEventTypes : availablePackages
+                const value = name === 'eventType' ? eventTypeValue : packageValue
+                return (
+                  <Box key={name} sx={{ display: 'contents' }}>
+                    <input type='hidden' name={name} value={value} />
+                    <Autocomplete<string | NewEventOption, false, false, true>
+                      freeSolo
+                      selectOnFocus
+                      clearOnBlur
+                      handleHomeEndKeys
+                      disabled={savingOption || deletingOption}
+                      options={options}
+                      value={value}
+                      filterOptions={(availableOptions, params) => {
+                        const inputValue = params.inputValue.trim()
+                        const normalizedInput = inputValue.toLocaleLowerCase()
+                        const filtered = availableOptions.filter((option) => {
+                          if (typeof option !== 'string') return false
+                          return !normalizedInput || option.toLocaleLowerCase().includes(normalizedInput)
+                        })
+                        const exactMatch = options.some(
+                          (option) => option.toLocaleLowerCase() === normalizedInput,
+                        )
+                        if (inputValue && !exactMatch) {
+                          filtered.push({
+                            inputValue,
+                            label: `Add “${inputValue}” as a new ${kind === 'eventType' ? 'event type' : 'package'}`,
+                            isNew: true,
+                          })
+                        }
+                        return filtered
+                      }}
+                      getOptionLabel={(option) => (
+                        typeof option === 'string' ? option : option.label
+                      )}
+                      isOptionEqualToValue={(option, selectedValue) => (
+                        getOptionValue(option).toLocaleLowerCase()
+                          === getOptionValue(selectedValue).toLocaleLowerCase()
+                      )}
+                      onChange={(_, option) => void handleOptionChange(kind, option)}
+                      renderOption={(props, option) => (
+                        <Box
+                          component='li'
+                          {...props}
+                          sx={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            gap: 1,
+                            '& .delete-event-option': { opacity: 0 },
+                            '&:hover .delete-event-option, &:focus-within .delete-event-option': { opacity: 1 },
+                          }}
+                        >
+                          {typeof option === 'string' ? (
+                            <>
+                              <Typography sx={{ fontSize: 14 }}>{option}</Typography>
+                              <IconButton
+                                className='delete-event-option'
+                                size='small'
+                                tabIndex={-1}
+                                aria-label={`Delete ${option}`}
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={(event) => {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  setOptionToDelete({ kind, value: option })
+                                }}
+                                sx={{ color: '#f43f5e', transition: 'opacity 120ms ease' }}
+                              >
+                                <FiX size={15} />
+                              </IconButton>
+                            </>
+                          ) : (
+                            <Stack direction='row' spacing={1} sx={{ alignItems: 'center' }}>
+                              <FiPlus />
+                              <Typography sx={{ fontSize: 14, fontWeight: 650 }}>{option.label}</Typography>
+                            </Stack>
+                          )}
+                        </Box>
+                      )}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label={label}
+                          helperText='Choose an option or type to add a new one'
+                        />
+                      )}
+                    />
+                  </Box>
+                )
+              }
+
+              return (
+                <TextField
+                  key={name}
+                  name={name}
+                  label={label}
+                  type={
+                    name === 'eventDate' || name === 'paymentDueDate'
+                      ? 'date'
+                      : name === 'agreedAmount' || name === 'amountPaid'
+                        ? 'number'
+                        : 'text'
+                  }
+                  select={name === 'pipelineStage' || name === 'bookingSource'}
+                  defaultValue={initialValues[name]}
+                  required={name === 'name' || name === 'eventDate'}
+                  multiline={name === 'notes'}
+                  minRows={name === 'notes' ? 3 : undefined}
+                  sx={{ gridColumn: name === 'location' || name === 'notes' ? '1 / -1' : undefined }}
+                  slotProps={name === 'eventDate' || name === 'paymentDueDate' ? { inputLabel: { shrink: true } } : undefined}
+                >
+                  {name === 'pipelineStage'
+                    ? pipelineStages.map((stage) => (
+                        <MenuItem key={stage} value={stage}>
+                          {stage}
+                        </MenuItem>
+                      ))
+                    : null}
+                  {name === 'bookingSource'
+                    ? bookingSources.map((source) => (
+                        <MenuItem key={source} value={source}>
+                          {source}
+                        </MenuItem>
+                      ))
+                    : null}
+                </TextField>
+              )
+            })}
           </Box>
           <Box sx={{ display: activeTab === 'expenses' ? 'block' : 'none' }}>
             {expenseError ? (
@@ -1265,7 +1453,7 @@ const EventDialog = ({
           <Button
             type='submit'
             variant='contained'
-            disabled={savingEvent}
+            disabled={savingEvent || savingOption || deletingOption}
             sx={{
               background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent3})`,
               boxShadow: 'none',
@@ -1277,6 +1465,53 @@ const EventDialog = ({
           </Button>
         </DialogActions>
       </Box>
+      {optionToDelete ? (
+        <Dialog
+          open
+          onClose={() => {
+            if (!deletingOption) setOptionToDelete(null)
+          }}
+          maxWidth='xs'
+          fullWidth
+          slotProps={{
+            paper: {
+              sx: {
+                background: theme.panel,
+                color: theme.text,
+                border: `1px solid ${theme.border}`,
+                borderRadius: '8px',
+              },
+            },
+          }}
+        >
+          <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
+            Delete {optionToDelete.kind === 'eventType' ? 'event type' : 'package'}?
+          </DialogTitle>
+          <DialogContent>
+            <Typography sx={{ color: theme.muted, fontSize: 14 }}>
+              <strong style={{ color: theme.text }}>{optionToDelete.value}</strong> will be removed from future dropdowns. Existing events using it will keep their current value.
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+            <Button
+              variant='outlined'
+              disabled={deletingOption}
+              onClick={() => setOptionToDelete(null)}
+              sx={{ borderColor: theme.border, color: theme.text }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant='contained'
+              disabled={deletingOption}
+              onClick={() => void handleDeleteOption()}
+              sx={{ background: '#e11d48', '&:hover': { background: '#be123c' } }}
+            >
+              {deletingOption ? 'Deleting...' : 'Delete option'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      ) : null}
     </Dialog>
   )
 }
@@ -3309,10 +3544,13 @@ const topLocations = useMemo(() => {
         <EventDialog
           key={editingEvent?.id ?? 'new-event'}
           editingEvent={editingEvent}
+          eventTypeOptions={eventFacets.eventTypes}
           initialTab={dialogInitialTab}
+          packageOptions={eventFacets.packages}
           savingEvent={savingEvent}
           theme={theme}
           onClose={() => setDialogOpen(false)}
+          onOptionsChanged={() => setFacetsRevision((current) => current + 1)}
           onSave={handleSaveEvent}
         />
       ) : null}
