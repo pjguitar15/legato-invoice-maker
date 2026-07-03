@@ -95,7 +95,6 @@ type EventRecord = {
   location: string
   notes: string
   packageName: string
-  paymentDueDate: string
   pipelineStage: string
   status: string
 }
@@ -301,7 +300,6 @@ const eventFormFields: Array<{ name: EventFormFieldName; label: string }> = [
   { name: 'packageName', label: 'Package' },
   { name: 'agreedAmount', label: 'Agreed amount' },
   { name: 'amountPaid', label: 'Amount paid' },
-  { name: 'paymentDueDate', label: 'Payment due date' },
   { name: 'bookingSource', label: 'Booking source' },
   { name: 'status', label: 'Status' },
   { name: 'location', label: 'Location' },
@@ -449,7 +447,6 @@ const emptyForm: EventFormValues = {
   location: '',
   notes: '',
   packageName: '',
-  paymentDueDate: '',
   pipelineStage: 'Booked',
   status: 'Booked',
 }
@@ -550,7 +547,6 @@ const normalizeEventRecord = (event: Partial<EventRecord>): EventRecord => ({
   location: event.location || '',
   notes: event.notes || '',
   packageName: event.packageName || '',
-  paymentDueDate: event.paymentDueDate || '',
   pipelineStage: event.pipelineStage || inferPipelineStage(event.status || ''),
   status: event.status || 'No status',
 })
@@ -1434,7 +1430,7 @@ const EventDialog = ({
                   name={name}
                   label={label}
                   type={
-                    name === 'eventDate' || name === 'paymentDueDate'
+                    name === 'eventDate'
                       ? 'date'
                       : name === 'eventTime'
                         ? 'time'
@@ -1448,7 +1444,7 @@ const EventDialog = ({
                   multiline={name === 'notes'}
                   minRows={name === 'notes' ? 3 : undefined}
                   sx={{ gridColumn: name === 'location' || name === 'notes' ? '1 / -1' : undefined }}
-                  slotProps={name === 'eventDate' || name === 'paymentDueDate' || name === 'eventTime'
+                  slotProps={name === 'eventDate' || name === 'eventTime'
                     ? {
                         inputLabel: { shrink: true },
                         htmlInput: {
@@ -1775,7 +1771,7 @@ const BusinessManager = () => {
   const [savedView, setSavedView] = useState<SavedView>('all')
   const [hideDone, setHideDone] = useState(true)
   const [sortField, setSortField] = useState<SortField>('eventDate')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [visibleColumns, setVisibleColumns] = useState<Record<ColumnKey, boolean>>({
     event: true,
     date: true,
@@ -3796,7 +3792,6 @@ const topLocations = useMemo(() => {
                   ['Agreed amount', calendarEventDetails.agreedAmount == null ? '-' : peso.format(calendarEventDetails.agreedAmount)],
                   ['Amount paid', calendarEventDetails.amountPaid == null ? '-' : peso.format(calendarEventDetails.amountPaid)],
                   ['Balance', calendarEventDetails.agreedAmount == null ? '-' : peso.format(getBalance(calendarEventDetails))],
-                  ['Payment due', calendarEventDetails.paymentDueDate || 'No due date'],
                   ['Booking source', calendarEventDetails.bookingSource || 'Unknown'],
                 ].map(([label, value]) => (
                   <Box
