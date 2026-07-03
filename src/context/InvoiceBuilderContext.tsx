@@ -6,7 +6,11 @@ import {
   type ChangeEvent,
   type PropsWithChildren,
 } from 'react'
-import type { LabelAndEquipmentProps } from '../components/Form/components/list-checker/listCheckerProps'
+import { nanoid } from 'nanoid'
+import {
+  EquipmentTypes,
+  type LabelAndEquipmentProps,
+} from '../components/Form/components/list-checker/listCheckerProps'
 import {
   CUSTOM_PACKAGE_ID,
   createInitialFormValues,
@@ -109,6 +113,70 @@ export const InvoiceBuilderProvider = ({ children }: PropsWithChildren) => {
     )
   }, [])
 
+  const addCustomSection = useCallback(() => {
+    setSections((current) => {
+      if (current.some((section) => section.isCustom)) return current
+
+      return [
+        ...current,
+        {
+          id: `custom-section-${nanoid()}`,
+          label: 'Extras / Reinforcements',
+          isCustom: true,
+          customPrice: '',
+          equipment: [],
+        },
+      ]
+    })
+  }, [])
+
+  const removeCustomSection = useCallback((sectionId: string) => {
+    setSections((current) => current.filter(
+      (section) => section.id !== sectionId || !section.isCustom,
+    ))
+  }, [])
+
+  const addCustomItem = useCallback((sectionId: string, name: string) => {
+    const normalizedName = name.trim()
+    if (!normalizedName) return
+
+    setSections((current) => current.map((section) => (
+      section.id === sectionId && section.isCustom
+        ? {
+            ...section,
+            equipment: [
+              ...section.equipment,
+              {
+                id: `custom-item-${nanoid()}`,
+                name: normalizedName,
+                type: EquipmentTypes.ACCESSORY,
+                isChecked: true,
+              },
+            ],
+          }
+        : section
+    )))
+  }, [])
+
+  const removeCustomItem = useCallback((sectionId: string, itemId: string) => {
+    setSections((current) => current.map((section) => (
+      section.id === sectionId && section.isCustom
+        ? {
+            ...section,
+            equipment: section.equipment.filter((item) => item.id !== itemId),
+          }
+        : section
+    )))
+  }, [])
+
+  const updateCustomSectionPrice = useCallback((sectionId: string, price: string) => {
+    setSections((current) => current.map((section) => (
+      section.id === sectionId && section.isCustom
+        ? { ...section, customPrice: price }
+        : section
+    )))
+  }, [])
+
   const selectPackageTemplate = useCallback((packageId: string) => {
     if (!getPackageTemplate(packageId)) {
       return false
@@ -137,6 +205,11 @@ export const InvoiceBuilderProvider = ({ children }: PropsWithChildren) => {
       sections,
       handleFieldChange,
       handleCheckClick,
+      addCustomSection,
+      removeCustomSection,
+      addCustomItem,
+      removeCustomItem,
+      updateCustomSectionPrice,
       selectPackageTemplate,
       resetInvoiceBuilder,
     }),
@@ -146,6 +219,11 @@ export const InvoiceBuilderProvider = ({ children }: PropsWithChildren) => {
       sections,
       handleFieldChange,
       handleCheckClick,
+      addCustomSection,
+      removeCustomSection,
+      addCustomItem,
+      removeCustomItem,
+      updateCustomSectionPrice,
       selectPackageTemplate,
       resetInvoiceBuilder,
     ],

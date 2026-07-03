@@ -52,6 +52,8 @@ export const equipmentIcons = {
 export type LabelAndEquipmentProps = {
   id: string
   label: string
+  isCustom?: boolean
+  customPrice?: string
   singleSelect?: boolean
   equipment: ListItemData[]
 }

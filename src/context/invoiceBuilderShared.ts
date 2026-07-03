@@ -8,6 +8,11 @@ export type InvoiceBuilderContextValue = {
   sections: LabelAndEquipmentProps[]
   handleFieldChange: (event: ChangeEvent<HTMLInputElement>) => void
   handleCheckClick: (sectionId: string, id: string) => void
+  addCustomSection: () => void
+  removeCustomSection: (sectionId: string) => void
+  addCustomItem: (sectionId: string, name: string) => void
+  removeCustomItem: (sectionId: string, itemId: string) => void
+  updateCustomSectionPrice: (sectionId: string, price: string) => void
   selectPackageTemplate: (packageId: string) => boolean
   resetInvoiceBuilder: () => void
 }

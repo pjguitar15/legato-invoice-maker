@@ -75,7 +75,7 @@ export const mergeSectionsWithBase = (
     return baseSections
   }
 
-  return baseSections.map((baseSection) => {
+  const mergedBaseSections = baseSections.map((baseSection) => {
     const savedSection = savedSections.find((section) => section.id === baseSection.id)
 
     if (!savedSection) {
@@ -96,6 +96,17 @@ export const mergeSectionsWithBase = (
       }),
     }
   })
+
+  const customSections = savedSections
+    .filter((section) => section.isCustom)
+    .map((section) => ({
+      ...section,
+      isCustom: true,
+      singleSelect: false,
+      equipment: section.equipment.map((item) => ({ ...item })),
+    }))
+
+  return [...mergedBaseSections, ...customSections]
 }
 
 export const packageTemplates: PackageTemplate[] = [

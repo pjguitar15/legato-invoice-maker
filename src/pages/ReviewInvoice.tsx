@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type FocusEvent,
   type ReactNode,
 } from 'react'
 import {
@@ -21,7 +22,7 @@ import {
 import { Link as RouterLink, Navigate, useParams } from 'react-router'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
-import { FiDownload, FiEdit3, FiLayout } from 'react-icons/fi'
+import { FiDownload, FiEdit3, FiLayout, FiTrash2 } from 'react-icons/fi'
 import { DEFAULT_BACKGROUND_COLOR } from '../mainStyleConst'
 import legatoLogo from '../assets/legato-black.png'
 import {
@@ -119,6 +120,16 @@ type SummaryRow = {
   total: number
 }
 
+type DocumentMeta = {
+  companyName: string
+  companyAddress: string
+  clientName: string
+  eventVenue: string
+  eventDate: string
+  preparedDate: string
+  invoiceNumber: string
+}
+
 type TableRow =
   | {
       id: string
@@ -148,7 +159,7 @@ type TableRow =
 
 type DocumentContentProps = {
   formValues: ReturnType<typeof useInvoiceBuilder>['formValues']
-  invoiceNumber: string
+  meta: DocumentMeta
   packageSections: Array<
     ReturnType<typeof useInvoiceBuilder>['sections'][number] & {
       equipment: ReturnType<
@@ -156,9 +167,15 @@ type DocumentContentProps = {
       >['sections'][number]['equipment']
     }
   >
-  preparedDate: string
   summaryRows: SummaryRow[]
   grandTotal: number
+}
+
+type EditCallbacks = {
+  editMode: boolean
+  onMetaChange: (field: keyof DocumentMeta, value: string) => void
+  onRowChange: (id: string, field: 'description' | 'no' | 'total', value: string) => void
+  onRowDelete: (id: string) => void
 }
 
 type DocumentBlock = {
@@ -188,7 +205,9 @@ const buildTableRows = ({
             no: sectionIndex === 0 ? '01' : undefined,
             description: section.label,
             total:
-              sectionIndex === 0
+              section.isCustom
+                ? `P${formatCurrency(section.customPrice ?? '')}`
+                : sectionIndex === 0
                 ? `P${formatCurrency(formValues.packageOnePrice)}`
                 : undefined,
             emphasize: true,
@@ -227,15 +246,57 @@ const buildTableRows = ({
   ]
 }
 
+const EditableText = ({
+  value,
+  onChange,
+  editMode,
+  component = 'span',
+  sx,
+}: {
+  value: string
+  onChange: (value: string) => void
+  editMode: boolean
+  component?: 'span' | 'div'
+  sx?: object
+}) => (
+  <Box
+    component={component}
+    contentEditable={editMode}
+    suppressContentEditableWarning
+    onBlur={(event: FocusEvent<HTMLElement>) =>
+      onChange(event.currentTarget.innerText)
+    }
+    sx={{
+      whiteSpace: 'pre-wrap',
+      minWidth: editMode ? '0.75rem' : undefined,
+      borderRadius: '2px',
+      transition: 'outline-color 120ms ease, background-color 120ms ease',
+      ...(editMode
+        ? {
+            cursor: 'text',
+            outline: '1px dashed transparent',
+            '&:hover': { outlineColor: '#8bb6ee' },
+            '&:focus': {
+              outline: '2px solid #4a90e2',
+              backgroundColor: 'rgba(74, 144, 226, 0.07)',
+            },
+          }
+        : {}),
+      ...sx,
+    }}
+  >
+    {value || ' '}
+  </Box>
+)
+
 const DocumentHeaderBlock = ({
-  formValues,
-  invoiceNumber,
-  preparedDate,
+  meta,
   documentType,
-}: Pick<
-  DocumentContentProps,
-  'formValues' | 'invoiceNumber' | 'preparedDate'
-> & { documentType: 'Invoice' | 'Quotation' }) => (
+  edit,
+}: Pick<DocumentContentProps, 'meta'> & {
+  documentType: 'Invoice' | 'Quotation'
+  edit: EditCallbacks
+}) => (
   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
     <Box
       sx={{
@@ -246,26 +307,29 @@ const DocumentHeaderBlock = ({
       }}
     >
       <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-        <Typography
+        <EditableText
+          value={meta.companyName}
+          onChange={(value) => edit.onMetaChange('companyName', value)}
+          editMode={edit.editMode}
+          component='div'
           sx={{
             fontSize: 13,
             fontWeight: 700,
             color: '#2b2e3a',
           }}
-        >
-          Legato Sounds and Lights
-        </Typography>
-        <Typography
+        />
+        <EditableText
+          value={meta.companyAddress}
+          onChange={(value) => edit.onMetaChange('companyAddress', value)}
+          editMode={edit.editMode}
+          component='div'
           sx={{
             fontSize: 10,
             fontWeight: 500,
             color: '#4b4f5c',
             maxWidth: '24rem',
           }}
-        >
-          Block 27 lot 9, St. Joseph Homes, Brgy. Inocencio Trece Martires City,
-          Cavite
-        </Typography>
+        />
       </Box>
       <Box
         sx={{
@@ -302,7 +366,12 @@ const DocumentHeaderBlock = ({
           fontWeight: 700,
         }}
       >
-        {documentType.toUpperCase()} #{invoiceNumber || '----'}
+        {documentType.toUpperCase()} #{' '}
+        <EditableText
+          value={meta.invoiceNumber}
+          onChange={(value) => edit.onMetaChange('invoiceNumber', value)}
+          editMode={edit.editMode}
+        />
       </Typography>
     </Box>
 
@@ -316,12 +385,21 @@ const DocumentHeaderBlock = ({
     >
       <Box sx={{ flex: '1 1 18rem' }}>
         <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#47506a' }}>
-          PREPARED FOR {formValues.clientName || ' '}
+          PREPARED FOR{' '}
+          <EditableText
+            value={meta.clientName}
+            onChange={(value) => edit.onMetaChange('clientName', value)}
+            editMode={edit.editMode}
+          />
         </Typography>
         <Typography sx={{ fontSize: 14, marginTop: '2rem' }}>
           Event Venue:{' '}
           <Box component='span' sx={{ fontWeight: 500 }}>
-            {formValues.eventVenue || ' '}
+            <EditableText
+              value={meta.eventVenue}
+              onChange={(value) => edit.onMetaChange('eventVenue', value)}
+              editMode={edit.editMode}
+            />
           </Box>
         </Typography>
       </Box>
@@ -330,13 +408,21 @@ const DocumentHeaderBlock = ({
           PREPARED DATE
         </Typography>
         <Typography sx={{ fontSize: 14, marginBottom: '0.8rem' }}>
-          {formatDisplayDate(preparedDate)}
+          <EditableText
+            value={meta.preparedDate}
+            onChange={(value) => edit.onMetaChange('preparedDate', value)}
+            editMode={edit.editMode}
+          />
         </Typography>
         <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#47506a' }}>
           EVENT DATE
         </Typography>
         <Typography sx={{ fontSize: 14 }}>
-          {formatDisplayDate(formValues.eventDate)}
+          <EditableText
+            value={meta.eventDate}
+            onChange={(value) => edit.onMetaChange('eventDate', value)}
+            editMode={edit.editMode}
+          />
         </Typography>
       </Box>
     </Box>
@@ -368,7 +454,7 @@ const TableHeader = () => (
   </Box>
 )
 
-const TableRowView = ({ row }: { row: TableRow }) => {
+const TableRowView = ({ row, edit }: { row: TableRow; edit?: EditCallbacks }) => {
     if (row.kind === 'grand-total') {
       return (
         <Box
@@ -381,9 +467,12 @@ const TableRowView = ({ row }: { row: TableRow }) => {
             padding: '1rem 0.9rem',
           }}
         >
-        <Typography sx={{ fontSize: 16, fontWeight: 700, color: '#394158' }}>
-          {row.total}
-        </Typography>
+        <EditableText
+          value={row.total}
+          onChange={(value) => edit?.onRowChange(row.id, 'total', value)}
+          editMode={Boolean(edit?.editMode)}
+          sx={{ fontSize: 16, fontWeight: 700, color: '#394158' }}
+        />
       </Box>
     )
   }
@@ -391,6 +480,7 @@ const TableRowView = ({ row }: { row: TableRow }) => {
   return (
       <Box
         sx={{
+          position: 'relative',
           display: 'grid',
           gridTemplateColumns: '44px minmax(0, 1fr) 126px',
           minHeight: row.kind === 'package-item' ? '1.95rem' : '3rem',
@@ -407,7 +497,13 @@ const TableRowView = ({ row }: { row: TableRow }) => {
           color: row.kind === 'package-item' ? 'transparent' : '#2b2e3a',
         }}
       >
-        {'no' in row ? (row.no ?? ' ') : ' '}
+        {'no' in row ? (
+          <EditableText
+            value={row.no ?? ''}
+            onChange={(value) => edit?.onRowChange(row.id, 'no', value)}
+            editMode={Boolean(edit?.editMode)}
+          />
+        ) : ' '}
       </Box>
       <Box
         sx={{
@@ -425,7 +521,12 @@ const TableRowView = ({ row }: { row: TableRow }) => {
           lineHeight: row.kind === 'package-item' ? 1.2 : 1.35,
         }}
       >
-        {row.kind === 'package-item' ? `• ${row.description}` : row.description}
+        {row.kind === 'package-item' ? '• ' : null}
+        <EditableText
+          value={row.description}
+          onChange={(value) => edit?.onRowChange(row.id, 'description', value)}
+          editMode={Boolean(edit?.editMode)}
+        />
       </Box>
       <Box
         sx={{
@@ -436,17 +537,45 @@ const TableRowView = ({ row }: { row: TableRow }) => {
           color: '#2f3746',
         }}
       >
-        {'total' in row ? (row.total ?? ' ') : ' '}
+        {'total' in row ? (
+          <EditableText
+            value={row.total ?? ''}
+            onChange={(value) => edit?.onRowChange(row.id, 'total', value)}
+            editMode={Boolean(edit?.editMode)}
+          />
+        ) : ' '}
       </Box>
+      {edit?.editMode ? (
+        <Box
+          component='button'
+          type='button'
+          className='invoice-edit-control'
+          aria-label='Remove row'
+          onClick={() => edit.onRowDelete(row.id)}
+          sx={{
+            position: 'absolute',
+            right: -26,
+            alignSelf: 'center',
+            border: 0,
+            background: 'transparent',
+            color: '#c23b4a',
+            cursor: 'pointer',
+            padding: '4px',
+            display: 'inline-flex',
+          }}
+        >
+          <FiTrash2 size={14} />
+        </Box>
+      ) : null}
     </Box>
   )
 }
 
-const SummaryTableBlock = ({ rows }: { rows: TableRow[] }) => (
+const SummaryTableBlock = ({ rows, edit }: { rows: TableRow[]; edit?: EditCallbacks }) => (
   <Box>
     <TableHeader />
     {rows.map((row) => (
-      <TableRowView key={row.id} row={row} />
+      <TableRowView key={row.id} row={row} edit={edit} />
     ))}
   </Box>
 )
@@ -550,26 +679,23 @@ const TermsSectionBlocks = ({ blocks }: { blocks: DocumentBlock[] }) => (
   </Box>
 )
 
-const buildTableBlocks = (rows: TableRow[][]): DocumentBlock[] =>
+const buildTableBlocks = (rows: TableRow[][], edit: EditCallbacks): DocumentBlock[] =>
   rows.map((pageRows, index) => ({
     id: `summary-table-${index + 1}`,
-    node: <SummaryTableBlock rows={pageRows} />,
+    node: <SummaryTableBlock rows={pageRows} edit={edit} />,
     gapAfter: 0,
     pageBreakAfter: true,
   }))
 
 const buildDocumentBlocks = ({
-  formValues,
-  invoiceNumber,
-  preparedDate,
+  meta,
   documentType,
   tableBlocks,
-}: Pick<
-  DocumentContentProps,
-  'formValues' | 'invoiceNumber' | 'preparedDate'
-> & {
+  edit,
+}: Pick<DocumentContentProps, 'meta'> & {
   documentType: 'Invoice' | 'Quotation'
   tableBlocks: DocumentBlock[]
+  edit: EditCallbacks
 }): DocumentBlock[] => {
   const termsBlocks: DocumentBlock[] = [
     {
@@ -590,10 +716,9 @@ const buildDocumentBlocks = ({
       id: 'header',
       node: (
         <DocumentHeaderBlock
-          formValues={formValues}
-          invoiceNumber={invoiceNumber}
-          preparedDate={preparedDate}
+          meta={meta}
           documentType={documentType}
+          edit={edit}
         />
       ),
       gapAfter: 0,
@@ -626,6 +751,7 @@ const ReviewInvoice = () => {
   const [isExporting, setIsExporting] = useState(false)
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [exportFilename, setExportFilename] = useState('')
+  const [editMode, setEditMode] = useState(true)
   const [documentType, setDocumentType] = useState<'Invoice' | 'Quotation'>('Invoice')
   const [measuredBlockHeights, setMeasuredBlockHeights] = useState<
     Record<string, number>
@@ -633,8 +759,21 @@ const ReviewInvoice = () => {
   const [measuredTableRowHeights, setMeasuredTableRowHeights] = useState<
     Record<string, number>
   >({})
-  const invoiceNumber = useMemo(() => createRandomInvoiceNumber(), [])
-  const preparedDate = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const initialInvoiceNumber = useMemo(() => createRandomInvoiceNumber(), [])
+  const initialPreparedDate = useMemo(
+    () => new Date().toISOString().slice(0, 10),
+    [],
+  )
+  const [meta, setMeta] = useState<DocumentMeta>(() => ({
+    companyName: 'Legato Sounds and Lights',
+    companyAddress:
+      'Block 27 lot 9, St. Joseph Homes, Brgy. Inocencio Trece Martires City, Cavite',
+    clientName: formValues.clientName,
+    eventVenue: formValues.eventVenue,
+    eventDate: formatDisplayDate(formValues.eventDate),
+    preparedDate: formatDisplayDate(initialPreparedDate),
+    invoiceNumber: initialInvoiceNumber,
+  }))
 
   useEffect(() => {
     if (!packageId || !template || activePackageId === packageId) {
@@ -654,13 +793,16 @@ const ReviewInvoice = () => {
 
   const isInvalidRoute = !packageId || (!template && !isCustomPackage)
 
-  const packageSections = sections
-    .filter((section) => packageSectionIds.includes(section.id))
-    .map((section) => ({
-      ...section,
-      equipment: section.equipment.filter((item) => item.isChecked),
-    }))
-    .filter((section) => section.equipment.length > 0)
+  const packageSections = useMemo(
+    () => sections
+      .filter((section) => section.isCustom || packageSectionIds.includes(section.id))
+      .map((section) => ({
+        ...section,
+        equipment: section.equipment.filter((item) => item.isChecked),
+      }))
+      .filter((section) => section.equipment.length > 0),
+    [sections],
+  )
 
   const ledWallSelection = sections
     .find((section) => section.id === SECTION_IDS.LED_WALL)
@@ -699,13 +841,18 @@ const ReviewInvoice = () => {
   const transpoTotal = hasTranspoFee
     ? parseAmount(formValues.transpoFeePrice)
     : 0
+  const customSectionsTotal = packageSections.reduce(
+    (total, section) =>
+      total + (section.isCustom ? parseAmount(section.customPrice ?? '') : 0),
+    0,
+  )
   const subtotalBeforeOr =
-    packageTotal + ledWallTotal + riserTotal + transpoTotal
+    packageTotal + ledWallTotal + riserTotal + transpoTotal + customSectionsTotal
   const orFeeTotal = hasOrFee
     ? roundUpToNearestFiveHundred(subtotalBeforeOr * 0.12)
     : 0
 
-  const summaryRows: SummaryRow[] = [
+  const summaryRows = useMemo<SummaryRow[]>(() => [
     ledWallSelection
       ? {
           title: ledWallSelection.name,
@@ -730,11 +877,19 @@ const ReviewInvoice = () => {
           total: transpoTotal,
         }
       : null,
-  ].filter(Boolean) as SummaryRow[]
+  ].filter(Boolean) as SummaryRow[], [
+    hasOrFee,
+    hasTranspoFee,
+    ledWallSelection,
+    ledWallTotal,
+    orFeeTotal,
+    riserTotal,
+    transpoTotal,
+  ])
 
   const grandTotal = subtotalBeforeOr + orFeeTotal
 
-  const tableRows = useMemo(
+  const generatedTableRows = useMemo(
     () =>
       buildTableRows({
         formValues,
@@ -744,6 +899,37 @@ const ReviewInvoice = () => {
       }),
     [formValues, grandTotal, packageSections, summaryRows],
   )
+  const [tableRows, setTableRows] = useState<TableRow[]>(generatedTableRows)
+  const documentDirtyRef = useRef(false)
+
+  useEffect(() => {
+    if (documentDirtyRef.current) return
+    setTableRows(generatedTableRows)
+    setMeta((current) => ({
+      ...current,
+      clientName: formValues.clientName,
+      eventVenue: formValues.eventVenue,
+      eventDate: formatDisplayDate(formValues.eventDate),
+    }))
+  }, [formValues.clientName, formValues.eventDate, formValues.eventVenue, generatedTableRows])
+
+  const editCallbacks = useMemo<EditCallbacks>(() => ({
+    editMode,
+    onMetaChange: (field, value) => {
+      documentDirtyRef.current = true
+      setMeta((current) => ({ ...current, [field]: value }))
+    },
+    onRowChange: (id, field, value) => {
+      documentDirtyRef.current = true
+      setTableRows((current) => current.map((row) => (
+        row.id === id ? ({ ...row, [field]: value } as TableRow) : row
+      )))
+    },
+    onRowDelete: (id) => {
+      documentDirtyRef.current = true
+      setTableRows((current) => current.filter((row) => row.id !== id))
+    },
+  }), [editMode])
 
   useLayoutEffect(() => {
     const nextHeights = Object.fromEntries(
@@ -815,20 +1001,19 @@ const ReviewInvoice = () => {
   }, [measuredBlockHeights.header, measuredTableRowHeights, tableRows])
 
   const tableBlocks = useMemo(
-    () => buildTableBlocks(paginatedTableRows),
-    [paginatedTableRows],
+    () => buildTableBlocks(paginatedTableRows, editCallbacks),
+    [editCallbacks, paginatedTableRows],
   )
 
   const documentBlocks = useMemo(
     () =>
       buildDocumentBlocks({
-        formValues,
-        invoiceNumber,
-        preparedDate,
+        meta,
         documentType,
         tableBlocks,
+        edit: editCallbacks,
       }),
-    [documentType, formValues, invoiceNumber, preparedDate, tableBlocks],
+    [documentType, editCallbacks, meta, tableBlocks],
   )
 
   useLayoutEffect(() => {
@@ -921,13 +1106,16 @@ const ReviewInvoice = () => {
   }
 
   const buildDefaultFilename = () => {
-    const preparedForPart = sanitizeFilenamePart(formValues.clientName, 'client')
-    const exportDatePart = preparedDate.replaceAll('-', '')
-    return `legato-sounds-and-lights-invoice-${preparedForPart}-${invoiceNumber || 'draft'}-${exportDatePart}`
+    const preparedForPart = sanitizeFilenamePart(meta.clientName, 'client')
+    const exportDatePart = sanitizeFilenamePart(meta.preparedDate, 'date')
+    return `legato-sounds-and-lights-invoice-${preparedForPart}-${meta.invoiceNumber || 'draft'}-${exportDatePart}`
   }
 
   const handleExportClick = () => {
     if (isExporting) return
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
     setExportFilename(buildDefaultFilename())
     setExportModalOpen(true)
   }
@@ -1009,6 +1197,13 @@ const ReviewInvoice = () => {
           }
         >
           Switch to {documentType === 'Invoice' ? 'Quotation' : 'Invoice'}
+        </Button>
+        <Button
+          variant={editMode ? 'contained' : 'outlined'}
+          onClick={() => setEditMode((current) => !current)}
+          startIcon={<FiEdit3 />}
+        >
+          {editMode ? 'Finish editing' : 'Edit document'}
         </Button>
         <Button
           component={RouterLink}
@@ -1104,6 +1299,21 @@ const ReviewInvoice = () => {
           </Box>
         </Button>
       </Box>
+
+      {editMode ? (
+        <Typography
+          sx={{
+            maxWidth: `${A4_WIDTH_PX}px`,
+            mx: 'auto',
+            mb: 1.5,
+            color: '#667085',
+            fontSize: 13,
+            textAlign: 'center',
+          }}
+        >
+          Click text inside the document to edit it. Changes repaginate after you click outside the edited text.
+        </Typography>
+      ) : null}
 
       <Box
         sx={{
@@ -1238,6 +1448,11 @@ const ReviewInvoice = () => {
               padding: PAGE_PADDING,
               overflow: 'hidden',
               fontFamily: 'Montserrat, sans-serif',
+              '& .invoice-edit-control': { display: 'none' },
+              '& [contenteditable]': {
+                outline: 'none !important',
+                backgroundColor: 'transparent !important',
+              },
             }}
           >
             <PageContent blocks={pageBlocks} />

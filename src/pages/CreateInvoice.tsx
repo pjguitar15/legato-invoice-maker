@@ -80,7 +80,10 @@ const CreateInvoice = () => {
   const hasValidationErrors = Boolean(
     validationErrors.clientName ||
       validationErrors.eventVenue ||
-      validationErrors.transpoFeePrice,
+      validationErrors.transpoFeePrice ||
+      sections.some(
+        (section) => section.isCustom && !(section.customPrice ?? '').trim(),
+      ),
   )
 
   const visibleValidationErrors = showValidation ? validationErrors : undefined
@@ -100,6 +103,10 @@ const CreateInvoice = () => {
           ? 'eventVenue'
           : validationErrors.transpoFeePrice
             ? 'transpoFeePrice'
+            : sections.some(
+                  (section) => section.isCustom && !(section.customPrice ?? '').trim(),
+                )
+              ? 'customSectionPrice'
           : null
 
       if (firstInvalidFieldName) {
@@ -268,7 +275,7 @@ const CreateInvoice = () => {
         </Box>
 
         <Fields errors={visibleValidationErrors} />
-        <ListChecker />
+        <ListChecker showValidation={showValidation} />
         <Box
           sx={{
             display: 'flex',
