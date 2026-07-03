@@ -1,4 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react'
+import { useDragScroll } from '../hooks/useDragScroll'
 import {
   Autocomplete,
   Box,
@@ -1758,6 +1759,7 @@ const BusinessManager = () => {
   const [markingDoneId, setMarkingDoneId] = useState('')
   const [confirmDoneEvent, setConfirmDoneEvent] = useState<EventRecord | null>(null)
   const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<EventRecord | null>(null)
+  const eventsTableRef = useDragScroll<HTMLDivElement>()
   const [viewMode, setViewMode] = useState<ViewMode>('events')
   const [analyticsTab, setAnalyticsTab] = useState<'business' | 'crew'>('business')
   const [crewPayroll, setCrewPayroll] = useState<{ crews: CrewPayrollSummary[]; records: CrewPayrollRecord[] }>({ crews: [], records: [] })
@@ -2886,7 +2888,14 @@ const topLocations = useMemo(() => {
               </TextField>
             </Box>
 
-            <TableContainer sx={{ maxHeight: 620 }}>
+            <TableContainer
+              ref={eventsTableRef}
+              sx={{
+                maxHeight: 620,
+                scrollbarWidth: 'none',
+                '&::-webkit-scrollbar': { display: 'none' },
+              }}
+            >
               <Table stickyHeader size='small'>
                 <TableHead>
                   <TableRow>
