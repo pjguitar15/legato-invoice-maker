@@ -120,6 +120,8 @@ type ColumnKey =
   | 'amount'
   | 'paid'
   | 'balance'
+  | 'expenses'
+  | 'income'
   | 'source'
   | 'status'
 
@@ -210,6 +212,8 @@ const tableColumns: Array<{ key: ColumnKey; label: string }> = [
   { key: 'amount', label: 'Amount' },
   { key: 'paid', label: 'Paid' },
   { key: 'balance', label: 'Balance' },
+  { key: 'expenses', label: 'Total Expenses' },
+  { key: 'income', label: 'Income' },
   { key: 'source', label: 'Source' },
   { key: 'status', label: 'Status' },
 ]
@@ -731,6 +735,9 @@ const hasSchedule = (event: EventRecord) => Boolean(event.eventDate.trim())
 const getBalance = (event: EventRecord) =>
   Math.max((event.agreedAmount ?? 0) - (event.amountPaid ?? 0), 0)
 
+const getIncome = (event: EventRecord) =>
+  (event.agreedAmount ?? 0) - event.expenseTotal
+
 const getEventYear = (event: EventRecord) =>
   event.eventDate ? event.eventDate.slice(0, 4) : 'Unscheduled'
 
@@ -1070,6 +1077,16 @@ const EventTableSkeletonRows = ({
         {visibleColumns.balance ? (
           <TableCell>
             <TableSkeletonLine width={70} />
+          </TableCell>
+        ) : null}
+        {visibleColumns.expenses ? (
+          <TableCell>
+            <TableSkeletonLine width={82} />
+          </TableCell>
+        ) : null}
+        {visibleColumns.income ? (
+          <TableCell>
+            <TableSkeletonLine width={76} />
           </TableCell>
         ) : null}
         {visibleColumns.source ? (
@@ -1784,6 +1801,8 @@ const BusinessManager = () => {
     amount: true,
     paid: true,
     balance: true,
+    expenses: true,
+    income: true,
     source: false,
     status: true,
   })
@@ -3033,6 +3052,16 @@ const topLocations = useMemo(() => {
                         {visibleColumns.balance ? (
                           <TableCell sx={{ fontWeight: 650, whiteSpace: 'nowrap', fontSize: 12.5, color: getBalance(event) > 0 ? '#f43f5e' : 'var(--muted)' }}>
                             {event.agreedAmount == null ? '-' : peso.format(getBalance(event))}
+                          </TableCell>
+                        ) : null}
+                        {visibleColumns.expenses ? (
+                          <TableCell sx={{ fontWeight: 650, whiteSpace: 'nowrap', fontSize: 12.5, color: 'var(--muted)' }}>
+                            {peso.format(event.expenseTotal)}
+                          </TableCell>
+                        ) : null}
+                        {visibleColumns.income ? (
+                          <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap', fontSize: 12.5, color: getIncome(event) < 0 ? '#f43f5e' : 'var(--text)' }}>
+                            {event.agreedAmount == null ? '-' : peso.format(getIncome(event))}
                           </TableCell>
                         ) : null}
                         {visibleColumns.source ? (
