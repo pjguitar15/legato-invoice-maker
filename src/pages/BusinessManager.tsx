@@ -478,6 +478,23 @@ const shortMonthLabel = new Intl.DateTimeFormat('en-US', {
   year: '2-digit',
 })
 
+const tableDateFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'long',
+  day: 'numeric',
+  year: 'numeric',
+})
+
+const formatTableDate = (value: string) => {
+  if (!value) return 'No date'
+
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return value
+
+  const [, year, month, day] = match
+  const date = new Date(Number(year), Number(month) - 1, Number(day))
+  return Number.isNaN(date.getTime()) ? value : tableDateFormatter.format(date)
+}
+
 const normalizeStatus = (status: string) => status.trim().toLowerCase()
 const isCancelled = (status: string) => normalizeStatus(status).includes('cancel')
 const isDone = (status: string) => normalizeStatus(status).includes('done')
@@ -3007,7 +3024,7 @@ const topLocations = useMemo(() => {
                         ) : null}
                         {visibleColumns.date ? (
                           <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                            <Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>{event.eventDate || 'No date'}</Typography>
+                            <Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>{formatTableDate(event.eventDate)}</Typography>
                             <Typography sx={{ fontSize: 12, color: 'var(--muted)' }}>Ingress: {formatIngressTime(event.eventTime)}</Typography>
                           </TableCell>
                         ) : null}
@@ -3647,7 +3664,7 @@ const topLocations = useMemo(() => {
                           <TableRow key={`${record.eventId}-${record.crewId}-${index}`}>
                             <TableCell sx={{ fontWeight: 650 }}>{record.crewName}</TableCell>
                             <TableCell>{record.eventName || 'Untitled event'}</TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap' }}>{record.eventDate || 'No date'}</TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatTableDate(record.eventDate)}</TableCell>
                             <TableCell>{record.note || '-'}</TableCell>
                             <TableCell align='right' sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{peso.format(record.amount)}</TableCell>
                           </TableRow>
@@ -3756,7 +3773,7 @@ const topLocations = useMemo(() => {
                       <TableCell>{item.doneCount}</TableCell>
                       <TableCell>{item.cancelledCount}</TableCell>
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>{peso.format(item.averageRevenue)}</TableCell>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{item.latestDate}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatTableDate(item.latestDate)}</TableCell>
                       <TableCell sx={{ maxWidth: 220 }}>
                         <Typography noWrap sx={{ fontSize: 12.5 }}>
                           {viewMode === 'clients' ? item.topLocation : item.topClient}
