@@ -39,6 +39,8 @@ import {
   FiBarChart2,
   FiCalendar,
   FiCheckCircle,
+  FiChevronLeft,
+  FiChevronRight,
   FiCircle,
   FiLogOut,
   FiMapPin,
@@ -743,6 +745,10 @@ const getDateKey = (date: Date) =>
 
 const getCurrentMonthKey = () => getDateKey(new Date()).slice(0, 7)
 const getMonthDate = (monthKey: string) => new Date(`${monthKey}-01T00:00:00`)
+const shiftMonthKey = (monthKey: string, offset: number) => {
+  const monthDate = getMonthDate(monthKey)
+  return getDateKey(new Date(monthDate.getFullYear(), monthDate.getMonth() + offset, 1)).slice(0, 7)
+}
 
 const average = (total: number, count: number) =>
   count === 0 ? 0 : Math.round(total / count)
@@ -3180,12 +3186,34 @@ const topLocations = useMemo(() => {
                 <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>
                   {monthLabel.format(getMonthDate(selectedMonth))}
                 </Typography>
-                <TextField
-                  type='month'
-                  size='small'
-                  value={selectedMonth}
-                  onChange={(event) => setSelectedMonth(event.target.value)}
-                />
+                <Stack direction='row' spacing={0.5} sx={{ alignItems: 'center' }}>
+                  <Tooltip title='Previous month'>
+                    <IconButton
+                      size='small'
+                      onClick={() => setSelectedMonth((current) => shiftMonthKey(current, -1))}
+                      aria-label='Go to previous month'
+                      sx={{ color: 'var(--muted)' }}
+                    >
+                      <FiChevronLeft />
+                    </IconButton>
+                  </Tooltip>
+                  <TextField
+                    type='month'
+                    size='small'
+                    value={selectedMonth}
+                    onChange={(event) => setSelectedMonth(event.target.value)}
+                  />
+                  <Tooltip title='Next month'>
+                    <IconButton
+                      size='small'
+                      onClick={() => setSelectedMonth((current) => shiftMonthKey(current, 1))}
+                      aria-label='Go to next month'
+                      sx={{ color: 'var(--muted)' }}
+                    >
+                      <FiChevronRight />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
               </Box>
               <Box
                 sx={{
