@@ -2565,8 +2565,8 @@ const topLocations = useMemo(() => {
           />
           <DashboardMetric
             label='Total event income'
-            value={peso.format(eventSummary.bookedValue)}
-            detail={`All ${eventSummary.activeCount} non-cancelled events, including upcoming bookings${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
+            value={peso.format(eventSummary.completedRevenue)}
+            detail={`Income from completed events${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
             accent='var(--accent)'
           />
           <DashboardMetric
