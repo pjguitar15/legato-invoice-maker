@@ -800,6 +800,9 @@ const getGross = (records: EventRecord[]) =>
 const getExpenses = (records: EventRecord[]) =>
   records.reduce((sum, event) => sum + event.expenseTotal, 0)
 
+const formatPercent = (part: number, total: number) =>
+  total > 0 ? `${Math.round((part / total) * 100)}%` : '0%'
+
 const getEventYear = (event: EventRecord) =>
   event.eventDate ? event.eventDate.slice(0, 4) : 'Unscheduled'
 
@@ -2121,6 +2124,36 @@ const BusinessManager = () => {
       .map(([, value]) => value)
   }, [events, yearFilter])
 
+  const monthlyExpenseRate = useMemo(() => {
+    const totals = new Map<string, { label: string; revenue: number; expenses: number; count: number }>()
+
+    events.forEach((event) => {
+      if (!hasSchedule(event)) return
+      if (yearFilter !== 'All' && getEventYear(event) !== yearFilter) return
+      if (isCancelled(event.status)) return
+
+      const key = getMonthKey(event.eventDate)
+      if (!key) return
+
+      const date = getMonthDate(key)
+      const current = totals.get(key) ?? {
+        label: shortMonthLabel.format(date),
+        revenue: 0,
+        expenses: 0,
+        count: 0,
+      }
+      current.revenue += event.agreedAmount ?? 0
+      current.expenses += event.expenseTotal
+      current.count += 1
+      totals.set(key, current)
+    })
+
+    return Array.from(totals.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-8)
+      .map(([, value]) => value)
+  }, [events, yearFilter])
+
   const statusMix = useMemo(() => {
     const totals = new Map<string, { count: number; revenue: number }>()
 
@@ -2176,6 +2209,27 @@ const BusinessManager = () => {
 
     return Array.from(totals.entries())
       .sort((a, b) => b[1].revenue - a[1].revenue)
+      .slice(0, 7)
+  }, [events, yearFilter])
+
+  const expenseTypeTotals = useMemo(() => {
+    const totals = new Map<ExpenseType, { amount: number; count: number }>()
+
+    events.forEach((event) => {
+      if (!hasSchedule(event)) return
+      if (yearFilter !== 'All' && getEventYear(event) !== yearFilter) return
+      if (isCancelled(event.status)) return
+
+      event.expenses.forEach((expense) => {
+        const current = totals.get(expense.type) ?? { amount: 0, count: 0 }
+        current.amount += expense.amount
+        current.count += 1
+        totals.set(expense.type, current)
+      })
+    })
+
+    return Array.from(totals.entries())
+      .sort((a, b) => b[1].amount - a[1].amount)
       .slice(0, 7)
   }, [events, yearFilter])
 
@@ -2392,6 +2446,9 @@ const topLocations = useMemo(() => {
   }
 
   const maxMonthlyRevenue = Math.max(...monthlyRevenue.map((item) => item.revenue), 1)
+  const maxMonthlyExpenses = Math.max(...monthlyExpenseRate.map((item) => item.expenses), 1)
+  const totalExpenseTypeAmount = expenseTypeTotals.reduce((sum, [, value]) => sum + value.amount, 0)
+  const maxExpenseTypeAmount = Math.max(...expenseTypeTotals.map(([, value]) => value.amount), 1)
   const maxStatusCount = Math.max(...statusMix.map(([, value]) => value.count), 1)
   const maxEventTypeRevenue = Math.max(
     ...eventTypeRevenue.map(([, value]) => value.revenue),
@@ -2422,11 +2479,17 @@ const topLocations = useMemo(() => {
   const currentMonthGross = getGross(currentMonthCompletedEvents)
   const currentMonthExpenses = getExpenses(currentMonthCompletedEvents)
   const currentMonthNet = currentMonthGross - currentMonthExpenses
+  const completedExpenseRate = formatPercent(completedIncomeExpenses, completedIncomeGross)
+  const currentMonthExpenseRate = formatPercent(currentMonthExpenses, currentMonthGross)
   const selectedIncomeBreakdownEvents =
     incomeBreakdownMode === 'month' ? currentMonthCompletedEvents : incomeBreakdownEvents
   const selectedIncomeBreakdownGross = getGross(selectedIncomeBreakdownEvents)
   const selectedIncomeBreakdownExpenses = getExpenses(selectedIncomeBreakdownEvents)
   const selectedIncomeBreakdownNet = selectedIncomeBreakdownGross - selectedIncomeBreakdownExpenses
+  const selectedIncomeBreakdownExpenseRate = formatPercent(
+    selectedIncomeBreakdownExpenses,
+    selectedIncomeBreakdownGross,
+  )
   const selectedIncomeBreakdownTitle =
     incomeBreakdownMode === 'month' ? 'Earnings this month' : 'Completed event income'
   const selectedIncomeBreakdownPeriod =
@@ -2695,7 +2758,7 @@ const topLocations = useMemo(() => {
                 </Box>
               )
             }
-            detail={`Expenses ${peso.format(completedIncomeExpenses)}${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
+            detail={`Expenses ${peso.format(completedIncomeExpenses)} (${completedExpenseRate} of gross)${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
             accent='#34d399'
             onClick={() => {
               setIncomeBreakdownMode('completed')
@@ -2716,7 +2779,7 @@ const topLocations = useMemo(() => {
                 </Box>
               )
             }
-            detail={`Done this month - Expenses ${peso.format(currentMonthExpenses)}`}
+            detail={`Done this month - Expenses ${peso.format(currentMonthExpenses)} (${currentMonthExpenseRate} of gross)`}
             accent='#f59e0b'
             onClick={() => {
               setIncomeBreakdownMode('month')
@@ -3612,6 +3675,48 @@ const topLocations = useMemo(() => {
             </AnalyticsCard>
 
             <AnalyticsCard
+              title='Monthly expense rate'
+              description='Expenses as a share of non-cancelled gross revenue by month.'
+            >
+              <Stack spacing={1.1} sx={{ marginTop: '1.3rem' }}>
+                {monthlyExpenseRate.map((item) => (
+                  <DataBar
+                    key={item.label}
+                    label={item.label}
+                    value={`${formatPercent(item.expenses, item.revenue)} of gross`}
+                    helper={`${peso.format(item.expenses)} expenses | ${peso.format(item.revenue)} gross`}
+                    percentage={(item.expenses / maxMonthlyExpenses) * 100}
+                    color='linear-gradient(90deg, #fb7185, #f59e0b)'
+                  />
+                ))}
+                {monthlyExpenseRate.length === 0 ? (
+                  <Typography sx={{ color: 'var(--muted)', mt: 2 }}>No expense data for this period.</Typography>
+                ) : null}
+              </Stack>
+            </AnalyticsCard>
+
+            <AnalyticsCard
+              title='Expenses by category'
+              description='Largest non-cancelled expense categories for the selected year.'
+            >
+              <Stack spacing={1.1} sx={{ marginTop: '1.3rem' }}>
+                {expenseTypeTotals.map(([type, value]) => (
+                  <DataBar
+                    key={type}
+                    label={type}
+                    value={peso.format(value.amount)}
+                    helper={`${value.count} records | ${formatPercent(value.amount, totalExpenseTypeAmount)} of expenses`}
+                    percentage={(value.amount / maxExpenseTypeAmount) * 100}
+                    color='linear-gradient(90deg, #f43f5e, #f59e0b)'
+                  />
+                ))}
+                {expenseTypeTotals.length === 0 ? (
+                  <Typography sx={{ color: 'var(--muted)', mt: 2 }}>No expense categories for this period.</Typography>
+                ) : null}
+              </Stack>
+            </AnalyticsCard>
+
+            <AnalyticsCard
               title='Status mix'
               description='Operational state of all records, including cancelled leads.'
             >
@@ -4126,7 +4231,7 @@ const topLocations = useMemo(() => {
             </Box>
             <Box sx={{ background: theme.panelSoft, border: `1px solid ${theme.borderSoft}`, borderRadius: '8px', p: 1.5 }}>
               <Typography sx={{ fontSize: 11, color: theme.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Expenses
+                Expenses ({selectedIncomeBreakdownExpenseRate})
               </Typography>
               <Typography sx={{ mt: 0.35, fontSize: 20, color: theme.text, fontWeight: 750 }}>
                 {incomeBreakdownLoading ? 'Loading...' : peso.format(selectedIncomeBreakdownExpenses)}
