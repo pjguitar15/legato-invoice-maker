@@ -655,6 +655,7 @@ const fetchCompletedIncomeBreakdownFromApi = async (yearFilter: string, signal?:
     records.push(...result.data)
     total = result.meta.total
     page += 1
+    if (result.data.length === 0) break
   } while (records.length < total)
 
   return records.filter((event) => !isCancelled(event.status))
@@ -793,6 +794,12 @@ const getBalance = (event: EventRecord) =>
 const getIncome = (event: EventRecord) =>
   (event.agreedAmount ?? 0) - event.expenseTotal
 
+const getGross = (records: EventRecord[]) =>
+  records.reduce((sum, event) => sum + (event.agreedAmount ?? 0), 0)
+
+const getExpenses = (records: EventRecord[]) =>
+  records.reduce((sum, event) => sum + event.expenseTotal, 0)
+
 const getEventYear = (event: EventRecord) =>
   event.eventDate ? event.eventDate.slice(0, 4) : 'Unscheduled'
 
@@ -859,7 +866,7 @@ const DashboardMetric = ({
   onClick,
 }: {
   label: string
-  value: string
+  value: ReactNode
   detail: string
   accent: string
   onClick?: () => void
@@ -918,6 +925,7 @@ const DashboardMetric = ({
         {label}
       </Typography>
       <Typography
+        component='div'
         sx={{
           fontSize: { xs: 22, md: 30 },
           lineHeight: 1.1,
@@ -1896,6 +1904,7 @@ const BusinessManager = () => {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [calendarEventDetails, setCalendarEventDetails] = useState<EventRecord | null>(null)
   const [incomeBreakdownOpen, setIncomeBreakdownOpen] = useState(false)
+  const [incomeBreakdownMode, setIncomeBreakdownMode] = useState<'completed' | 'month'>('completed')
   const [incomeBreakdownEvents, setIncomeBreakdownEvents] = useState<EventRecord[]>([])
   const [incomeBreakdownLoading, setIncomeBreakdownLoading] = useState(false)
   const [incomeBreakdownError, setIncomeBreakdownError] = useState('')
@@ -2000,8 +2009,6 @@ const BusinessManager = () => {
   }, [eventsRevision, viewMode, yearFilter])
 
   useEffect(() => {
-    if (!incomeBreakdownOpen) return
-
     const controller = new AbortController()
     setIncomeBreakdownLoading(true)
     setIncomeBreakdownError('')
@@ -2018,7 +2025,7 @@ const BusinessManager = () => {
       })
 
     return () => controller.abort()
-  }, [eventsRevision, incomeBreakdownOpen, yearFilter])
+  }, [eventsRevision, yearFilter])
 
   const statusOptions = useMemo(
     () => ['All', ...eventFacets.statuses],
@@ -2394,10 +2401,29 @@ const topLocations = useMemo(() => {
     ...yearlyRevenue.map(([, value]) => value.revenue),
     1,
   )
-  const incomeBreakdownTotal = incomeBreakdownEvents.reduce(
-    (sum, event) => sum + (event.agreedAmount ?? 0),
-    0,
+  const completedIncomeGross = getGross(incomeBreakdownEvents)
+  const completedIncomeExpenses = getExpenses(incomeBreakdownEvents)
+  const completedIncomeNet = completedIncomeGross - completedIncomeExpenses
+  const currentMonthKey = getCurrentMonthKey()
+  const currentMonthCompletedEvents = incomeBreakdownEvents.filter(
+    (event) => getMonthKey(event.eventDate) === currentMonthKey,
   )
+  const currentMonthGross = getGross(currentMonthCompletedEvents)
+  const currentMonthExpenses = getExpenses(currentMonthCompletedEvents)
+  const currentMonthNet = currentMonthGross - currentMonthExpenses
+  const selectedIncomeBreakdownEvents =
+    incomeBreakdownMode === 'month' ? currentMonthCompletedEvents : incomeBreakdownEvents
+  const selectedIncomeBreakdownGross = getGross(selectedIncomeBreakdownEvents)
+  const selectedIncomeBreakdownExpenses = getExpenses(selectedIncomeBreakdownEvents)
+  const selectedIncomeBreakdownNet = selectedIncomeBreakdownGross - selectedIncomeBreakdownExpenses
+  const selectedIncomeBreakdownTitle =
+    incomeBreakdownMode === 'month' ? 'Earnings this month' : 'Completed event income'
+  const selectedIncomeBreakdownPeriod =
+    incomeBreakdownMode === 'month'
+      ? formatYearMonth(currentMonthKey)
+      : yearFilter === 'All'
+        ? 'All years'
+        : yearFilter
   const averageCompletedBooking = average(completedRevenue, doneEvents.length)
   const doneRate = analyticsEvents.length
     ? Math.round((doneEvents.length / analyticsEvents.length) * 100)
@@ -2646,22 +2672,51 @@ const topLocations = useMemo(() => {
         >
           <DashboardMetric
             label='Completed event income'
-            value={peso.format(eventSummary.completedRevenue)}
-            detail={`Income from completed, non-cancelled events${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
+            value={
+              incomeBreakdownLoading ? (
+                'Loading...'
+              ) : (
+                <Box sx={{ display: 'grid', gap: 0.4 }}>
+                  <Box component='span'>Gross {peso.format(completedIncomeGross)}</Box>
+                  <Box component='span' sx={{ fontSize: { xs: 16, md: 18 }, color: 'text.secondary', fontWeight: 650 }}>
+                    Net {peso.format(completedIncomeNet)}
+                  </Box>
+                </Box>
+              )
+            }
+            detail={`Expenses ${peso.format(completedIncomeExpenses)}${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
             accent='#34d399'
-            onClick={() => setIncomeBreakdownOpen(true)}
+            onClick={() => {
+              setIncomeBreakdownMode('completed')
+              setIncomeBreakdownOpen(true)
+            }}
+          />
+          <DashboardMetric
+            label='Earnings this month'
+            value={
+              incomeBreakdownLoading ? (
+                'Loading...'
+              ) : (
+                <Box sx={{ display: 'grid', gap: 0.4 }}>
+                  <Box component='span'>Gross {peso.format(currentMonthGross)}</Box>
+                  <Box component='span' sx={{ fontSize: { xs: 16, md: 18 }, color: 'text.secondary', fontWeight: 650 }}>
+                    Net {peso.format(currentMonthNet)}
+                  </Box>
+                </Box>
+              )
+            }
+            detail={`Done this month - Expenses ${peso.format(currentMonthExpenses)}`}
+            accent='#f59e0b'
+            onClick={() => {
+              setIncomeBreakdownMode('month')
+              setIncomeBreakdownOpen(true)
+            }}
           />
           <DashboardMetric
             label='Total expenses'
             value={peso.format(eventSummary.totalExpenses)}
             detail={`All recorded event expenses${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
             accent='#f43f5e'
-          />
-          <DashboardMetric
-            label='Earnings this month'
-            value={peso.format(eventSummary.currentMonthRevenue)}
-            detail={`Revenue from non-cancelled events in the current calendar month`}
-            accent='#f59e0b'
           />
           <DashboardMetric
             label='Top client'
@@ -4035,35 +4090,43 @@ const topLocations = useMemo(() => {
       >
         <DialogTitle sx={{ pb: 1 }}>
           <Typography sx={{ fontSize: 22, fontWeight: 700, color: theme.text }}>
-            Completed event income
+            {selectedIncomeBreakdownTitle}
           </Typography>
           <Typography sx={{ mt: 0.5, fontSize: 13, color: theme.muted }}>
-            {yearFilter === 'All' ? 'All years' : yearFilter} breakdown
+            {selectedIncomeBreakdownPeriod} breakdown - {incomeBreakdownLoading ? 'Loading events' : `${selectedIncomeBreakdownEvents.length} events`}
           </Typography>
         </DialogTitle>
         <DialogContent>
           <Box
             sx={{
               display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
               gap: 1,
               mb: 2,
             }}
           >
             <Box sx={{ background: theme.panelSoft, border: `1px solid ${theme.borderSoft}`, borderRadius: '8px', p: 1.5 }}>
               <Typography sx={{ fontSize: 11, color: theme.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Dashboard total
+                Gross
               </Typography>
               <Typography sx={{ mt: 0.35, fontSize: 20, color: theme.text, fontWeight: 750 }}>
-                {peso.format(eventSummary.completedRevenue)}
+                {incomeBreakdownLoading ? 'Loading...' : peso.format(selectedIncomeBreakdownGross)}
               </Typography>
             </Box>
             <Box sx={{ background: theme.panelSoft, border: `1px solid ${theme.borderSoft}`, borderRadius: '8px', p: 1.5 }}>
               <Typography sx={{ fontSize: 11, color: theme.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Listed events
+                Expenses
               </Typography>
               <Typography sx={{ mt: 0.35, fontSize: 20, color: theme.text, fontWeight: 750 }}>
-                {incomeBreakdownLoading ? 'Loading...' : `${incomeBreakdownEvents.length} events`}
+                {incomeBreakdownLoading ? 'Loading...' : peso.format(selectedIncomeBreakdownExpenses)}
+              </Typography>
+            </Box>
+            <Box sx={{ background: theme.panelSoft, border: `1px solid ${theme.borderSoft}`, borderRadius: '8px', p: 1.5 }}>
+              <Typography sx={{ fontSize: 11, color: theme.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Net
+              </Typography>
+              <Typography sx={{ mt: 0.35, fontSize: 20, color: theme.text, fontWeight: 750 }}>
+                {incomeBreakdownLoading ? 'Loading...' : peso.format(selectedIncomeBreakdownNet)}
               </Typography>
             </Box>
           </Box>
@@ -4077,18 +4140,20 @@ const topLocations = useMemo(() => {
           ) : null}
 
           {!incomeBreakdownError && !incomeBreakdownLoading ? (
-            incomeBreakdownEvents.length > 0 ? (
+            selectedIncomeBreakdownEvents.length > 0 ? (
               <TableContainer sx={{ maxHeight: 360, border: `1px solid ${theme.borderSoft}`, borderRadius: '8px' }}>
                 <Table stickyHeader size='small'>
                   <TableHead>
                     <TableRow>
                       <TableCell>Event</TableCell>
                       <TableCell>Date</TableCell>
-                      <TableCell align='right'>Amount</TableCell>
+                      <TableCell align='right'>Gross</TableCell>
+                      <TableCell align='right'>Expenses</TableCell>
+                      <TableCell align='right'>Net</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {incomeBreakdownEvents.map((event) => (
+                    {selectedIncomeBreakdownEvents.map((event) => (
                       <TableRow key={event.id}>
                         <TableCell sx={{ maxWidth: 240 }}>
                           <Typography noWrap sx={{ fontSize: 13, fontWeight: 650, color: theme.text }}>
@@ -4102,6 +4167,12 @@ const topLocations = useMemo(() => {
                         <TableCell align='right' sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
                           {peso.format(event.agreedAmount ?? 0)}
                         </TableCell>
+                        <TableCell align='right' sx={{ whiteSpace: 'nowrap' }}>
+                          {peso.format(event.expenseTotal)}
+                        </TableCell>
+                        <TableCell align='right' sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {peso.format(getIncome(event))}
+                        </TableCell>
                       </TableRow>
                     ))}
                     <TableRow>
@@ -4109,7 +4180,13 @@ const topLocations = useMemo(() => {
                         Total
                       </TableCell>
                       <TableCell align='right' sx={{ fontWeight: 750, whiteSpace: 'nowrap' }}>
-                        {peso.format(incomeBreakdownTotal)}
+                        {peso.format(selectedIncomeBreakdownGross)}
+                      </TableCell>
+                      <TableCell align='right' sx={{ fontWeight: 750, whiteSpace: 'nowrap' }}>
+                        {peso.format(selectedIncomeBreakdownExpenses)}
+                      </TableCell>
+                      <TableCell align='right' sx={{ fontWeight: 750, whiteSpace: 'nowrap' }}>
+                        {peso.format(selectedIncomeBreakdownNet)}
                       </TableCell>
                     </TableRow>
                   </TableBody>
@@ -4118,7 +4195,9 @@ const topLocations = useMemo(() => {
             ) : (
               <Box sx={{ background: theme.panelSoft, border: `1px solid ${theme.borderSoft}`, borderRadius: '8px', p: 2 }}>
                 <Typography sx={{ color: theme.muted, fontSize: 14 }}>
-                  No completed event income found for this filter.
+                  {incomeBreakdownMode === 'month'
+                    ? 'No completed event income found for this month.'
+                    : 'No completed event income found for this filter.'}
                 </Typography>
               </Box>
             )
