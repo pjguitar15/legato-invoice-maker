@@ -1329,8 +1329,8 @@ const EventDialog = ({
 
   const addExpense = () => {
     setExpenses((current) => [
-      ...current,
       { id: `expense-${Date.now()}`, type: 'Crew salary', amount: '', note: '', crewId: '', crewName: '' },
+      ...current,
     ])
   }
 
