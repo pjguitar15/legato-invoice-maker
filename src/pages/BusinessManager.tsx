@@ -1906,6 +1906,7 @@ const BusinessManager = () => {
   const [incomeBreakdownOpen, setIncomeBreakdownOpen] = useState(false)
   const [incomeBreakdownMode, setIncomeBreakdownMode] = useState<'completed' | 'month'>('completed')
   const [incomeBreakdownEvents, setIncomeBreakdownEvents] = useState<EventRecord[]>([])
+  const [currentMonthIncomeEvents, setCurrentMonthIncomeEvents] = useState<EventRecord[]>([])
   const [incomeBreakdownLoading, setIncomeBreakdownLoading] = useState(false)
   const [incomeBreakdownError, setIncomeBreakdownError] = useState('')
   const [colorMode, setColorMode] = useState<ColorMode>('dark')
@@ -2013,11 +2014,23 @@ const BusinessManager = () => {
     setIncomeBreakdownLoading(true)
     setIncomeBreakdownError('')
 
-    fetchCompletedIncomeBreakdownFromApi(yearFilter, controller.signal)
-      .then(setIncomeBreakdownEvents)
+    const selectedCompletedEvents = fetchCompletedIncomeBreakdownFromApi(yearFilter, controller.signal)
+    const allCompletedEvents =
+      yearFilter === 'All'
+        ? selectedCompletedEvents
+        : fetchCompletedIncomeBreakdownFromApi('All', controller.signal)
+
+    Promise.all([selectedCompletedEvents, allCompletedEvents])
+      .then(([selectedEvents, allEvents]) => {
+        setIncomeBreakdownEvents(selectedEvents)
+        setCurrentMonthIncomeEvents(
+          allEvents.filter((event) => getMonthKey(event.eventDate) === getCurrentMonthKey()),
+        )
+      })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return
         setIncomeBreakdownEvents([])
+        setCurrentMonthIncomeEvents([])
         setIncomeBreakdownError(error instanceof Error ? error.message : 'Failed to load completed event income')
       })
       .finally(() => {
@@ -2405,9 +2418,7 @@ const topLocations = useMemo(() => {
   const completedIncomeExpenses = getExpenses(incomeBreakdownEvents)
   const completedIncomeNet = completedIncomeGross - completedIncomeExpenses
   const currentMonthKey = getCurrentMonthKey()
-  const currentMonthCompletedEvents = incomeBreakdownEvents.filter(
-    (event) => getMonthKey(event.eventDate) === currentMonthKey,
-  )
+  const currentMonthCompletedEvents = currentMonthIncomeEvents
   const currentMonthGross = getGross(currentMonthCompletedEvents)
   const currentMonthExpenses = getExpenses(currentMonthCompletedEvents)
   const currentMonthNet = currentMonthGross - currentMonthExpenses
@@ -2698,9 +2709,9 @@ const topLocations = useMemo(() => {
                 'Loading...'
               ) : (
                 <Box sx={{ display: 'grid', gap: 0.4 }}>
-                  <Box component='span'>Gross {peso.format(currentMonthGross)}</Box>
+                  <Box component='span'>Month gross {peso.format(currentMonthGross)}</Box>
                   <Box component='span' sx={{ fontSize: { xs: 16, md: 18 }, color: 'text.secondary', fontWeight: 650 }}>
-                    Net {peso.format(currentMonthNet)}
+                    Month net {peso.format(currentMonthNet)}
                   </Box>
                 </Box>
               )
