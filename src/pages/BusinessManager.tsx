@@ -628,6 +628,38 @@ const fetchEventsFromApi = async (params: EventListParams, signal?: AbortSignal)
   }
 }
 
+const fetchCompletedIncomeBreakdownFromApi = async (yearFilter: string, signal?: AbortSignal) => {
+  const limit = 100
+  const records: EventRecord[] = []
+  let page = 0
+  let total = 0
+
+  do {
+    const result = await fetchEventsFromApi(
+      {
+        eventTypeFilter: 'All',
+        hideDone: false,
+        packageFilter: 'All',
+        page,
+        query: '',
+        rowsPerPage: limit,
+        savedView: 'completed',
+        sortDirection: 'desc',
+        sortField: 'eventDate',
+        statusFilter: 'All',
+        yearFilter,
+      },
+      signal,
+    )
+
+    records.push(...result.data)
+    total = result.meta.total
+    page += 1
+  } while (records.length < total)
+
+  return records.filter((event) => !isCancelled(event.status))
+}
+
 const fetchEventFacetsFromApi = async (signal?: AbortSignal) => {
   const response = await fetch('/api/events/facets', { signal })
 
@@ -824,13 +856,25 @@ const DashboardMetric = ({
   value,
   detail,
   accent,
+  onClick,
 }: {
   label: string
   value: string
   detail: string
   accent: string
+  onClick?: () => void
 }) => (
   <Card
+    role={onClick ? 'button' : undefined}
+    tabIndex={onClick ? 0 : undefined}
+    onClick={onClick}
+    onKeyDown={(event) => {
+      if (!onClick) return
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        onClick()
+      }
+    }}
     sx={{
       position: 'relative',
       borderRadius: '8px',
@@ -838,6 +882,20 @@ const DashboardMetric = ({
       minWidth: { xs: 'min(78vw, 280px)', sm: 0 },
       scrollSnapAlign: { xs: 'start', sm: 'none' },
       overflow: 'hidden',
+      cursor: onClick ? 'pointer' : 'default',
+      transition: 'border-color 160ms ease, transform 160ms ease',
+      '&:hover': onClick
+        ? {
+            borderColor: 'var(--accent)',
+            transform: 'translateY(-1px)',
+          }
+        : undefined,
+      '&:focus-visible': onClick
+        ? {
+            outline: '2px solid var(--accent)',
+            outlineOffset: 2,
+          }
+        : undefined,
       '&::before': {
         content: '""',
         position: 'absolute',
@@ -1837,6 +1895,10 @@ const BusinessManager = () => {
   const [dialogInitialTab, setDialogInitialTab] = useState<'details' | 'expenses'>('details')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [calendarEventDetails, setCalendarEventDetails] = useState<EventRecord | null>(null)
+  const [incomeBreakdownOpen, setIncomeBreakdownOpen] = useState(false)
+  const [incomeBreakdownEvents, setIncomeBreakdownEvents] = useState<EventRecord[]>([])
+  const [incomeBreakdownLoading, setIncomeBreakdownLoading] = useState(false)
+  const [incomeBreakdownError, setIncomeBreakdownError] = useState('')
   const [colorMode, setColorMode] = useState<ColorMode>('dark')
   const navigate = useNavigate()
   const theme = managerThemes[colorMode]
@@ -1936,6 +1998,27 @@ const BusinessManager = () => {
       })
     return () => controller.abort()
   }, [eventsRevision, viewMode, yearFilter])
+
+  useEffect(() => {
+    if (!incomeBreakdownOpen) return
+
+    const controller = new AbortController()
+    setIncomeBreakdownLoading(true)
+    setIncomeBreakdownError('')
+
+    fetchCompletedIncomeBreakdownFromApi(yearFilter, controller.signal)
+      .then(setIncomeBreakdownEvents)
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setIncomeBreakdownEvents([])
+        setIncomeBreakdownError(error instanceof Error ? error.message : 'Failed to load completed event income')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIncomeBreakdownLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [eventsRevision, incomeBreakdownOpen, yearFilter])
 
   const statusOptions = useMemo(
     () => ['All', ...eventFacets.statuses],
@@ -2311,6 +2394,10 @@ const topLocations = useMemo(() => {
     ...yearlyRevenue.map(([, value]) => value.revenue),
     1,
   )
+  const incomeBreakdownTotal = incomeBreakdownEvents.reduce(
+    (sum, event) => sum + (event.agreedAmount ?? 0),
+    0,
+  )
   const averageCompletedBooking = average(completedRevenue, doneEvents.length)
   const doneRate = analyticsEvents.length
     ? Math.round((doneEvents.length / analyticsEvents.length) * 100)
@@ -2562,12 +2649,7 @@ const topLocations = useMemo(() => {
             value={peso.format(eventSummary.completedRevenue)}
             detail={`Income from completed, non-cancelled events${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
             accent='#34d399'
-          />
-          <DashboardMetric
-            label='Total event income'
-            value={peso.format(eventSummary.completedRevenue)}
-            detail={`Income from completed events${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
-            accent='var(--accent)'
+            onClick={() => setIncomeBreakdownOpen(true)}
           />
           <DashboardMetric
             label='Total expenses'
@@ -3933,6 +4015,124 @@ const topLocations = useMemo(() => {
             </DialogActions>
           </>
         ) : null}
+      </Dialog>
+
+      <Dialog
+        open={incomeBreakdownOpen}
+        onClose={() => setIncomeBreakdownOpen(false)}
+        fullWidth
+        maxWidth='sm'
+        slotProps={{
+          paper: {
+            sx: {
+              background: theme.panel,
+              color: theme.text,
+              border: `1px solid ${theme.border}`,
+              borderRadius: '8px',
+            },
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography sx={{ fontSize: 22, fontWeight: 700, color: theme.text }}>
+            Completed event income
+          </Typography>
+          <Typography sx={{ mt: 0.5, fontSize: 13, color: theme.muted }}>
+            {yearFilter === 'All' ? 'All years' : yearFilter} breakdown
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+              gap: 1,
+              mb: 2,
+            }}
+          >
+            <Box sx={{ background: theme.panelSoft, border: `1px solid ${theme.borderSoft}`, borderRadius: '8px', p: 1.5 }}>
+              <Typography sx={{ fontSize: 11, color: theme.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Dashboard total
+              </Typography>
+              <Typography sx={{ mt: 0.35, fontSize: 20, color: theme.text, fontWeight: 750 }}>
+                {peso.format(eventSummary.completedRevenue)}
+              </Typography>
+            </Box>
+            <Box sx={{ background: theme.panelSoft, border: `1px solid ${theme.borderSoft}`, borderRadius: '8px', p: 1.5 }}>
+              <Typography sx={{ fontSize: 11, color: theme.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Listed events
+              </Typography>
+              <Typography sx={{ mt: 0.35, fontSize: 20, color: theme.text, fontWeight: 750 }}>
+                {incomeBreakdownLoading ? 'Loading...' : `${incomeBreakdownEvents.length} events`}
+              </Typography>
+            </Box>
+          </Box>
+
+          {incomeBreakdownError ? (
+            <Box sx={{ background: 'color-mix(in srgb, #f43f5e 10%, transparent)', border: '1px solid #f43f5e', borderRadius: '8px', p: 1.5 }}>
+              <Typography sx={{ color: '#f43f5e', fontSize: 14, fontWeight: 650 }}>
+                {incomeBreakdownError}
+              </Typography>
+            </Box>
+          ) : null}
+
+          {!incomeBreakdownError && !incomeBreakdownLoading ? (
+            incomeBreakdownEvents.length > 0 ? (
+              <TableContainer sx={{ maxHeight: 360, border: `1px solid ${theme.borderSoft}`, borderRadius: '8px' }}>
+                <Table stickyHeader size='small'>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Event</TableCell>
+                      <TableCell>Date</TableCell>
+                      <TableCell align='right'>Amount</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {incomeBreakdownEvents.map((event) => (
+                      <TableRow key={event.id}>
+                        <TableCell sx={{ maxWidth: 240 }}>
+                          <Typography noWrap sx={{ fontSize: 13, fontWeight: 650, color: theme.text }}>
+                            {event.name || 'Untitled event'}
+                          </Typography>
+                          <Typography noWrap sx={{ mt: 0.2, fontSize: 12, color: theme.muted }}>
+                            {event.clientName || 'No client'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatTableDate(event.eventDate)}</TableCell>
+                        <TableCell align='right' sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {peso.format(event.agreedAmount ?? 0)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow>
+                      <TableCell colSpan={2} sx={{ fontWeight: 750 }}>
+                        Total
+                      </TableCell>
+                      <TableCell align='right' sx={{ fontWeight: 750, whiteSpace: 'nowrap' }}>
+                        {peso.format(incomeBreakdownTotal)}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Box sx={{ background: theme.panelSoft, border: `1px solid ${theme.borderSoft}`, borderRadius: '8px', p: 2 }}>
+                <Typography sx={{ color: theme.muted, fontSize: 14 }}>
+                  No completed event income found for this filter.
+                </Typography>
+              </Box>
+            )
+          ) : null}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button
+            variant='outlined'
+            onClick={() => setIncomeBreakdownOpen(false)}
+            sx={{ borderColor: theme.border, color: theme.text, textTransform: 'none', fontWeight: 620 }}
+          >
+            Close
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {dialogOpen ? (
