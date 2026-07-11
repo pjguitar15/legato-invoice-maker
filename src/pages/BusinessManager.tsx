@@ -42,6 +42,7 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiCircle,
+  FiCopy,
   FiLogOut,
   FiMapPin,
   FiUsers,
@@ -61,6 +62,7 @@ const expenseTypes = [
   'Crew salary',
   'Crew food',
   'Gas',
+  'Toll Fee/RFID',
   'Lalamove',
   'Reinforcements',
   'Others',
@@ -90,6 +92,7 @@ type EventRecord = {
   bookingSource: string
   clientName: string
   eventDate: string
+  eventEndDate: string
   eventType: string
   eventTime: string
   expenses: EventExpense[]
@@ -100,9 +103,10 @@ type EventRecord = {
   packageName: string
   pipelineStage: string
   status: string
+  recurringSeriesId: string
 }
 
-type EventFormValues = Omit<EventRecord, 'id' | 'agreedAmount' | 'amountPaid' | 'expenses' | 'expenseCount' | 'expenseTotal'> & {
+type EventFormValues = Omit<EventRecord, 'id' | 'agreedAmount' | 'amountPaid' | 'expenses' | 'expenseCount' | 'expenseTotal' | 'recurringSeriesId'> & {
   agreedAmount: string
   amountPaid: string
 }
@@ -301,7 +305,8 @@ type EventFormFieldName = keyof EventFormValues
 const eventFormFields: Array<{ name: EventFormFieldName; label: string }> = [
   { name: 'name', label: 'Event name' },
   { name: 'clientName', label: 'Client name' },
-  { name: 'eventDate', label: 'Event date' },
+  { name: 'eventDate', label: 'Start date' },
+  { name: 'eventEndDate', label: 'End date' },
   { name: 'eventTime', label: 'Ingress time' },
   { name: 'eventType', label: 'Event type' },
   { name: 'packageName', label: 'Package' },
@@ -449,6 +454,7 @@ const emptyForm: EventFormValues = {
   bookingSource: 'Unknown',
   clientName: '',
   eventDate: getLocalDateInputValue(),
+  eventEndDate: getLocalDateInputValue(),
   eventType: '',
   eventTime: '',
   location: '',
@@ -497,6 +503,13 @@ const formatTableDate = (value: string) => {
   return Number.isNaN(date.getTime()) ? value : tableDateFormatter.format(date)
 }
 
+const formatEventDateRange = (event: Pick<EventRecord, 'eventDate' | 'eventEndDate'>) => {
+  if (!event.eventEndDate || event.eventEndDate === event.eventDate) {
+    return formatTableDate(event.eventDate)
+  }
+  return `${formatTableDate(event.eventDate)} – ${formatTableDate(event.eventEndDate)}`
+}
+
 const normalizeStatus = (status: string) => status.trim().toLowerCase()
 const isCancelled = (status: string) => normalizeStatus(status).includes('cancel')
 const isDone = (status: string) => normalizeStatus(status).includes('done')
@@ -538,6 +551,35 @@ const formatIngressTime = (value: string) => {
   }).format(new Date(2000, 0, 1, hours, minutes))
 }
 
+const formatCrewEventBrief = (event: EventRecord) => [
+  'CREW EVENT BRIEF',
+  '',
+  `Event: ${event.name || 'Untitled event'}`,
+  `Date: ${formatEventDateRange(event)}`,
+  `Ingress: ${formatIngressTime(event.eventTime)}`,
+  `Venue: ${event.location || 'Not set'}`,
+  `Event type: ${event.eventType || 'Not set'}`,
+  `Package: ${event.packageName || 'Not set'}`,
+  `Status: ${event.status || 'Not set'}`,
+].join('\n')
+
+const copyTextToClipboard = async (text: string) => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const textArea = document.createElement('textarea')
+  textArea.value = text
+  textArea.style.position = 'fixed'
+  textArea.style.opacity = '0'
+  document.body.appendChild(textArea)
+  textArea.select()
+  const copied = document.execCommand('copy')
+  textArea.remove()
+  if (!copied) throw new Error('Copy is not supported by this browser')
+}
+
 const normalizeEventRecord = (event: Partial<EventRecord>): EventRecord => ({
   id: event.id || `evt-${Date.now()}`,
   name: event.name || '',
@@ -552,6 +594,7 @@ const normalizeEventRecord = (event: Partial<EventRecord>): EventRecord => ({
   bookingSource: event.bookingSource || 'Unknown',
   clientName: event.clientName || '',
   eventDate: event.eventDate || '',
+  eventEndDate: event.eventEndDate || event.eventDate || '',
   eventType: event.eventType || '',
   eventTime: event.eventTime || '',
   expenses: Array.isArray(event.expenses)
@@ -573,6 +616,7 @@ const normalizeEventRecord = (event: Partial<EventRecord>): EventRecord => ({
   packageName: event.packageName || '',
   pipelineStage: event.pipelineStage || inferPipelineStage(event.status || ''),
   status: event.status || 'No status',
+  recurringSeriesId: event.recurringSeriesId || '',
 })
 
 const toFormValues = (event: EventRecord): EventFormValues => ({
@@ -709,11 +753,11 @@ const fetchEventSummaryFromApi = async (yearFilter: string, signal?: AbortSignal
   }
 }
 
-const saveEventToApi = async (event: EventRecord, editingId?: string) => {
+const saveEventToApi = async (event: EventRecord, editingId?: string, repeatWeekly = false) => {
   const response = await fetch(editingId ? `/api/events/${editingId}` : '/api/events', {
     method: editingId ? 'PUT' : 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(event),
+    body: JSON.stringify({ ...event, repeatWeekly }),
   })
 
   if (!response.ok) {
@@ -1223,7 +1267,7 @@ const EventDialog = ({
   theme: ManagerTheme
   onClose: () => void
   onOptionsChanged: () => void
-  onSave: (values: EventFormValues, expenses: EventExpense[]) => Promise<void>
+  onSave: (values: EventFormValues, expenses: EventExpense[], repeatWeekly: boolean) => Promise<void>
 }) => {
   const initialValues = editingEvent ? toFormValues(editingEvent) : emptyForm
   const [activeTab, setActiveTab] = useState<'details' | 'expenses'>(initialTab)
@@ -1237,6 +1281,8 @@ const EventDialog = ({
   const [eventTypeValue, setEventTypeValue] = useState(initialValues.eventType)
   const [packageValue, setPackageValue] = useState(initialValues.packageName)
   const [optionError, setOptionError] = useState('')
+  const [dateError, setDateError] = useState('')
+  const [repeatWeekly, setRepeatWeekly] = useState(false)
   const [savingOption, setSavingOption] = useState(false)
   const [deletingOption, setDeletingOption] = useState(false)
   const [optionToDelete, setOptionToDelete] = useState<{ kind: EventOptionKind; value: string } | null>(null)
@@ -1353,6 +1399,18 @@ const EventDialog = ({
       amount: Number(expense.amount),
     }))
 
+    if (values.eventEndDate && values.eventEndDate < values.eventDate) {
+      setDateError('End date cannot be before the start date.')
+      setActiveTab('details')
+      return
+    }
+
+    if (repeatWeekly && new Date(`${values.eventDate}T00:00:00`).getDay() !== 0) {
+      setDateError('A recurring Sunday schedule must start on a Sunday.')
+      setActiveTab('details')
+      return
+    }
+
     if (expenses.some((expense) => expense.amount.trim() === '') || normalizedExpenses.some((expense) => !Number.isFinite(expense.amount) || expense.amount < 0)) {
       setExpenseError('Enter a valid amount of zero or greater for every expense.')
       setActiveTab('expenses')
@@ -1365,7 +1423,8 @@ const EventDialog = ({
     }
 
     setExpenseError('')
-    await onSave(values, normalizedExpenses)
+    setDateError('')
+    await onSave(values, normalizedExpenses, repeatWeekly)
   }
 
   return (
@@ -1430,6 +1489,11 @@ const EventDialog = ({
           {optionError ? (
             <Typography sx={{ color: '#f43f5e', fontSize: 13, fontWeight: 650, mb: 1.5 }}>
               {optionError}
+            </Typography>
+          ) : null}
+          {dateError ? (
+            <Typography sx={{ color: '#f43f5e', fontSize: 13, fontWeight: 650, mb: 1.5 }}>
+              {dateError}
             </Typography>
           ) : null}
           <Box
@@ -1540,7 +1604,7 @@ const EventDialog = ({
                   name={name}
                   label={label}
                   type={
-                    name === 'eventDate'
+                    name === 'eventDate' || name === 'eventEndDate'
                       ? 'date'
                       : name === 'eventTime'
                         ? 'time'
@@ -1550,11 +1614,11 @@ const EventDialog = ({
                   }
                   select={name === 'status' || name === 'bookingSource'}
                   defaultValue={initialValues[name]}
-                  required={name === 'name' || name === 'eventDate'}
+                  required={name === 'name' || name === 'eventDate' || name === 'eventEndDate'}
                   multiline={name === 'notes'}
                   minRows={name === 'notes' ? 3 : undefined}
                   sx={{ gridColumn: name === 'location' || name === 'notes' ? '1 / -1' : undefined }}
-                  slotProps={name === 'eventDate' || name === 'eventTime'
+                  slotProps={name === 'eventDate' || name === 'eventEndDate' || name === 'eventTime'
                     ? {
                         inputLabel: { shrink: true },
                         htmlInput: {
@@ -1581,6 +1645,20 @@ const EventDialog = ({
                 </TextField>
               )
             })}
+            {!editingEvent ? (
+              <FormControlLabel
+                sx={{ gridColumn: '1 / -1', color: theme.text, mt: 0.5 }}
+                control={<Checkbox checked={repeatWeekly} onChange={(event) => setRepeatWeekly(event.target.checked)} />}
+                label={(
+                  <Box>
+                    <Typography sx={{ fontSize: 14, fontWeight: 650 }}>Repeat every Sunday</Typography>
+                    <Typography sx={{ fontSize: 12, color: theme.muted }}>
+                      Sundays are added automatically. Deleting one skips only that date.
+                    </Typography>
+                  </Box>
+                )}
+              />
+            ) : null}
           </Box>
           <Box sx={{ display: activeTab === 'expenses' ? 'block' : 'none' }}>
             {expenseError ? (
@@ -1866,6 +1944,7 @@ const BusinessManager = () => {
   const [savingEvent, setSavingEvent] = useState(false)
   const [deletingEventId, setDeletingEventId] = useState('')
   const [markingDoneId, setMarkingDoneId] = useState('')
+  const [copiedEventId, setCopiedEventId] = useState('')
   const [confirmDoneEvent, setConfirmDoneEvent] = useState<EventRecord | null>(null)
   const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<EventRecord | null>(null)
   const eventsTableRef = useDragScroll<HTMLDivElement>()
@@ -2337,7 +2416,11 @@ const topLocations = useMemo(() => {
   const selectedMonthEvents = useMemo(
     () =>
       events
-        .filter((event) => getMonthKey(event.eventDate) === selectedMonth)
+        .filter((event) => {
+          const monthStart = `${selectedMonth}-01`
+          const monthEnd = getDateKey(new Date(getMonthDate(selectedMonth).getFullYear(), getMonthDate(selectedMonth).getMonth() + 1, 0))
+          return event.eventDate <= monthEnd && (event.eventEndDate || event.eventDate) >= monthStart
+        })
         .sort((a, b) => (a.eventDate || '').localeCompare(b.eventDate || '')),
     [events, selectedMonth],
   )
@@ -2357,7 +2440,9 @@ const topLocations = useMemo(() => {
       const key = getDateKey(date)
       cells.push({
         date,
-        events: selectedMonthEvents.filter((event) => event.eventDate === key),
+        events: selectedMonthEvents.filter((event) => (
+          event.eventDate <= key && (event.eventEndDate || event.eventDate) >= key
+        )),
       })
     }
 
@@ -2417,7 +2502,20 @@ const topLocations = useMemo(() => {
     }
   }
 
-  const handleSaveEvent = async (values: EventFormValues, expenses: EventExpense[]) => {
+  const handleCopyCrewBrief = async (event: EventRecord) => {
+    setEventsError('')
+    try {
+      await copyTextToClipboard(formatCrewEventBrief(event))
+      setCopiedEventId(event.id)
+      window.setTimeout(() => {
+        setCopiedEventId((current) => (current === event.id ? '' : current))
+      }, 2000)
+    } catch (error) {
+      setEventsError(error instanceof Error ? error.message : 'Failed to copy crew event brief')
+    }
+  }
+
+  const handleSaveEvent = async (values: EventFormValues, expenses: EventExpense[], repeatWeekly: boolean) => {
     const nextEvent: EventRecord = {
       ...values,
       id: editingEvent?.id ?? `evt-${Date.now()}`,
@@ -2427,13 +2525,14 @@ const topLocations = useMemo(() => {
       expenses,
       expenseCount: expenses.length,
       expenseTotal: expenses.reduce((total, expense) => total + expense.amount, 0),
+      recurringSeriesId: editingEvent?.recurringSeriesId || '',
     }
 
     setSavingEvent(true)
     setEventsError('')
 
     try {
-      await saveEventToApi(nextEvent, editingEvent?.id)
+      await saveEventToApi(nextEvent, editingEvent?.id, repeatWeekly)
       setDialogOpen(false)
       setEditingEvent(null)
       setEventsRevision((current) => current + 1)
@@ -3241,7 +3340,7 @@ const topLocations = useMemo(() => {
                         ) : null}
                         {visibleColumns.date ? (
                           <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                            <Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>{formatTableDate(event.eventDate)}</Typography>
+                            <Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>{formatEventDateRange(event)}</Typography>
                             <Typography sx={{ fontSize: 12, color: 'var(--muted)' }}>Ingress: {formatIngressTime(event.eventTime)}</Typography>
                           </TableCell>
                         ) : null}
@@ -3320,6 +3419,15 @@ const topLocations = useMemo(() => {
                           </TableCell>
                         ) : null}
                         <TableCell align='right'>
+                          <Tooltip title={copiedEventId === event.id ? 'Copied crew-safe brief' : 'Copy crew-safe brief'}>
+                            <IconButton
+                              sx={{ color: copiedEventId === event.id ? '#22c55e' : 'var(--muted)' }}
+                              onClick={() => void handleCopyCrewBrief(event)}
+                              aria-label={`Copy crew-safe brief for ${event.name || 'event'}`}
+                            >
+                              {copiedEventId === event.id ? <FiCheckCircle /> : <FiCopy />}
+                            </IconButton>
+                          </Tooltip>
                           {event.expenseCount > 0 ? (
                             <Tooltip title={`${event.expenseCount} expense${event.expenseCount === 1 ? '' : 's'} · ${peso.format(event.expenseTotal)}`}>
                               <IconButton
@@ -3550,7 +3658,7 @@ const topLocations = useMemo(() => {
                   >
                     <Typography sx={{ fontWeight: 650, color: 'var(--text)' }}>{event.name}</Typography>
                     <Typography sx={{ fontSize: 13, color: 'var(--muted)' }}>
-                      {event.eventDate} | Ingress: {formatIngressTime(event.eventTime)}
+                      {formatEventDateRange(event)} | Ingress: {formatIngressTime(event.eventTime)}
                     </Typography>
                   </Box>
                 ))}
@@ -4119,7 +4227,7 @@ const topLocations = useMemo(() => {
                 }}
               >
                 {[
-                  ['Date', calendarEventDetails.eventDate || 'No date'],
+                  ['Date', formatEventDateRange(calendarEventDetails)],
                   ['Ingress time', formatIngressTime(calendarEventDetails.eventTime)],
                   ['Client', calendarEventDetails.clientName || 'No client'],
                   ['Venue', calendarEventDetails.location || 'No location'],
@@ -4279,7 +4387,7 @@ const topLocations = useMemo(() => {
                             {event.clientName || 'No client'}
                           </Typography>
                         </TableCell>
-                        <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatTableDate(event.eventDate)}</TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatEventDateRange(event)}</TableCell>
                         <TableCell align='right' sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
                           {peso.format(event.agreedAmount ?? 0)}
                         </TableCell>
@@ -4419,11 +4527,15 @@ const topLocations = useMemo(() => {
           }}
         >
           <DialogTitle sx={{ fontWeight: 700, color: theme.text, pb: 1 }}>
-            Delete event?
+            {confirmDeleteEvent.recurringSeriesId ? 'Skip this Sunday?' : 'Delete event?'}
           </DialogTitle>
           <DialogContent>
             <Typography sx={{ color: theme.muted, fontSize: 14 }}>
-              This will permanently delete <strong style={{ color: theme.text }}>{confirmDeleteEvent.name || 'this event'}</strong> and its expense records. This action cannot be undone.
+              {confirmDeleteEvent.recurringSeriesId ? (
+                <>This removes only <strong style={{ color: theme.text }}>{formatTableDate(confirmDeleteEvent.eventDate)}</strong>. The Feast remains scheduled on every other Sunday.</>
+              ) : (
+                <>This will permanently delete <strong style={{ color: theme.text }}>{confirmDeleteEvent.name || 'this event'}</strong> and its expense records. This action cannot be undone.</>
+              )}
             </Typography>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
@@ -4448,7 +4560,9 @@ const topLocations = useMemo(() => {
                 '&:hover': { background: '#be123c', boxShadow: 'none' },
               }}
             >
-              {deletingEventId === confirmDeleteEvent.id ? 'Deleting...' : 'Delete event'}
+              {deletingEventId === confirmDeleteEvent.id
+                ? 'Removing...'
+                : confirmDeleteEvent.recurringSeriesId ? 'Skip this Sunday' : 'Delete event'}
             </Button>
           </DialogActions>
         </Dialog>
