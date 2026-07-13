@@ -117,6 +117,7 @@ type EventFormValues = Omit<EventRecord, 'id' | 'createdAt' | 'agreedAmount' | '
 type EventApiRecord = Partial<EventRecord> & { created_at?: string }
 
 type ViewMode = 'events' | 'calendar' | 'analytics' | 'clients' | 'venues'
+type AnalyticsTab = 'overview' | 'earnings' | 'expenses' | 'clients' | 'packages' | 'crew'
 type ColorMode = 'light' | 'dark'
 type SortField = 'eventDate' | 'name' | 'clientName' | 'agreedAmount' | 'status'
 type SortDirection = 'asc' | 'desc'
@@ -1041,13 +1042,16 @@ const AnalyticsCard = ({
   title,
   description,
   children,
+  visible = true,
 }: {
   title: string
   description: string
   children: ReactNode
+  visible?: boolean
 }) => (
   <Card
     sx={{
+      display: visible ? 'block' : 'none',
       background: 'var(--panel)',
       borderRadius: '8px',
       minWidth: 0,
@@ -1996,7 +2000,7 @@ const BusinessManager = () => {
   const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<EventRecord | null>(null)
   const eventsTableRef = useDragScroll<HTMLDivElement>()
   const [viewMode, setViewMode] = useState<ViewMode>('events')
-  const [analyticsTab, setAnalyticsTab] = useState<'business' | 'crew'>('business')
+  const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTab>('overview')
   const [crewPayroll, setCrewPayroll] = useState<{ crews: CrewPayrollSummary[]; records: CrewPayrollRecord[] }>({ crews: [], records: [] })
   const [crewPayrollLoading, setCrewPayrollLoading] = useState(false)
   const [query, setQuery] = useState('')
@@ -2339,6 +2343,26 @@ const BusinessManager = () => {
       .slice(0, 7)
   }, [events, yearFilter])
 
+  const clientRevenue = useMemo(() => {
+    const totals = new Map<string, { count: number; revenue: number }>()
+
+    events.forEach((event) => {
+      if (!hasSchedule(event)) return
+      if (yearFilter !== 'All' && getEventYear(event) !== yearFilter) return
+      if (isCancelled(event.status)) return
+
+      const key = event.clientName || 'No client'
+      const current = totals.get(key) ?? { count: 0, revenue: 0 }
+      current.count += 1
+      current.revenue += event.agreedAmount ?? 0
+      totals.set(key, current)
+    })
+
+    return Array.from(totals.entries())
+      .sort((a, b) => b[1].revenue - a[1].revenue)
+      .slice(0, 7)
+  }, [events, yearFilter])
+
   const expenseTypeTotals = useMemo(() => {
     const totals = new Map<ExpenseType, { amount: number; count: number }>()
 
@@ -2606,6 +2630,10 @@ const topLocations = useMemo(() => {
     ...packageRevenue.map(([, value]) => value.revenue),
     1,
   )
+  const maxClientRevenue = Math.max(
+    ...clientRevenue.map(([, value]) => value.revenue),
+    1,
+  )
   const maxLocationCount = Math.max(...topLocations.map(([, count]) => count), 1)
   const maxSourceRevenue = Math.max(
     ...sourceRevenue.map(([, value]) => value.revenue),
@@ -2720,36 +2748,25 @@ const topLocations = useMemo(() => {
             padding: { xs: 1, sm: 2.5, md: 3.25 },
           }}
         >
-          <Box>
-            <Typography
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: { xs: 0.65, sm: 0.85 } }}>
+            <Box
+              component='img'
+              src='/legato-logo.png'
+              alt='Legato Sounds and Lights logo'
               sx={{
-                display: { xs: 'none', sm: 'block' },
-                fontSize: 12,
-                fontWeight: 650,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: 'var(--muted)',
+                width: { xs: 58, sm: 148 },
+                height: { xs: 28, sm: 44 },
+                flex: '0 0 auto',
+                objectFit: 'contain',
+                filter: colorMode === 'light' ? 'invert(1)' : 'none',
+                transition: 'filter 180ms ease',
               }}
-            >
-              Legato Operations
-            </Typography>
-            <Typography
-              component='h1'
-              sx={{
-                fontSize: { xs: 24, md: 36 },
-                lineHeight: 1,
-                fontWeight: 720,
-                letterSpacing: 0,
-                marginTop: { xs: 0, sm: '0.35rem' },
-                color: 'var(--text)',
-              }}
-            >
-              <Box component='span' sx={{ display: { xs: 'inline', sm: 'none' } }}>Events</Box>
-              <Box component='span' sx={{ display: { xs: 'none', sm: 'inline' } }}>Event Business Tracker</Box>
-            </Typography>
-            <Typography sx={{ display: { xs: 'none', sm: 'block' }, color: 'var(--muted)', marginTop: '0.55rem', maxWidth: 620 }}>
-              Track events, booking status, revenue, packages, and the working calendar from one API-backed operations dashboard.
-            </Typography>
+            />
+            <Box>
+              <Typography sx={{ display: { xs: 'none', sm: 'block' }, color: 'var(--muted)', marginTop: '0.55rem', maxWidth: 620 }}>
+                Track events, booking status, revenue, packages, and the working calendar from one API-backed operations dashboard.
+              </Typography>
+            </Box>
           </Box>
 
           <Stack
@@ -2796,29 +2813,6 @@ const topLocations = useMemo(() => {
             </Button>
             <Button
               className='mobile-header-action'
-              aria-label='Log out'
-              variant='outlined'
-              startIcon={<FiLogOut />}
-              onClick={handleLogout}
-              sx={{
-                borderColor: 'var(--border)',
-                color: 'var(--muted)',
-                background: 'var(--panel)',
-                borderRadius: '8px',
-                fontWeight: 620,
-                textTransform: 'none',
-                minHeight: { xs: 36, sm: 42 },
-                '&:hover': {
-                  borderColor: '#f43f5e',
-                  color: '#f43f5e',
-                  background: 'var(--panelSoft)',
-                },
-              }}
-            >
-              <Box component='span' sx={{ display: { xs: 'none', sm: 'inline' } }}>Logout</Box>
-            </Button>
-            <Button
-              className='mobile-header-action'
               aria-label='Open invoice maker'
               component={RouterLink}
               to='/invoice-templates'
@@ -2842,26 +2836,26 @@ const topLocations = useMemo(() => {
             </Button>
             <Button
               className='mobile-header-action'
-              aria-label='Add event'
-              variant='contained'
-              startIcon={<FiPlus />}
-              onClick={openCreateDialog}
-              disabled={eventsLoading}
+              aria-label='Log out'
+              variant='outlined'
+              startIcon={<FiLogOut />}
+              onClick={handleLogout}
               sx={{
-                background: 'var(--primary)',
-                color: 'var(--primaryText)',
+                borderColor: 'var(--border)',
+                color: 'var(--muted)',
+                background: 'var(--panel)',
                 borderRadius: '8px',
-                boxShadow: 'none',
-                fontWeight: 650,
+                fontWeight: 620,
                 textTransform: 'none',
                 minHeight: { xs: 36, sm: 42 },
                 '&:hover': {
-                  background: 'var(--primaryHover)',
-                  boxShadow: 'none',
+                  borderColor: '#f43f5e',
+                  color: '#f43f5e',
+                  background: 'var(--panelSoft)',
                 },
               }}
             >
-              <Box component='span' sx={{ display: { xs: 'none', sm: 'inline' } }}>Add event</Box>
+              <Box component='span' sx={{ display: { xs: 'none', sm: 'inline' } }}>Logout</Box>
             </Button>
           </Stack>
         </Box>
@@ -2927,7 +2921,7 @@ const topLocations = useMemo(() => {
               ) : (
                 <Box sx={{ display: 'grid', gap: 0.4 }}>
                   <Box component='span'>Gross {peso.format(completedIncomeGross)}</Box>
-                  <Box component='span' sx={{ fontSize: { xs: 16, md: 18 }, color: 'text.secondary', fontWeight: 650 }}>
+                  <Box component='span' sx={{ fontSize: { xs: 13, md: 15 }, color: 'text.secondary', fontWeight: 650 }}>
                     Net {peso.format(completedIncomeNet)}
                   </Box>
                 </Box>
@@ -2949,7 +2943,7 @@ const topLocations = useMemo(() => {
               ) : (
                 <Box sx={{ display: 'grid', gap: 0.4 }}>
                   <Box component='span'>Month gross {peso.format(currentMonthGross)}</Box>
-                  <Box component='span' sx={{ fontSize: { xs: 16, md: 18 }, color: 'text.secondary', fontWeight: 650 }}>
+                  <Box component='span' sx={{ fontSize: { xs: 13, md: 15 }, color: 'text.secondary', fontWeight: 650 }}>
                     Month net {peso.format(currentMonthNet)}
                   </Box>
                 </Box>
@@ -3082,6 +3076,30 @@ const topLocations = useMemo(() => {
                 ? `${venueSummaries.length} venues`
                 : `${eventsTotal} rows`}
           </Button>
+          <Button
+            aria-label='Add event'
+            variant='contained'
+            startIcon={<FiPlus />}
+            onClick={openCreateDialog}
+            disabled={eventsLoading}
+            sx={{
+              flex: '0 0 auto',
+              minHeight: 38,
+              whiteSpace: 'nowrap',
+              background: 'var(--primary)',
+              color: 'var(--primaryText)',
+              borderRadius: '8px',
+              boxShadow: 'none',
+              fontWeight: 650,
+              textTransform: 'none',
+              '&:hover': {
+                background: 'var(--primaryHover)',
+                boxShadow: 'none',
+              },
+            }}
+          >
+            Add event
+          </Button>
         </Box>
         <Menu
           anchorEl={propertiesAnchor}
@@ -3166,6 +3184,25 @@ const topLocations = useMemo(() => {
                 />
               ))}
               <Box sx={{ display: { xs: 'none', sm: 'block' }, flex: 1 }} />
+              <TextField
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value)
+                  setPage(0)
+                }}
+                placeholder='Search events'
+                size='small'
+                slotProps={{
+                  input: {
+                    startAdornment: <FiSearch style={{ marginRight: 8, color: 'var(--muted)' }} />,
+                  },
+                }}
+                sx={{
+                  flex: '0 1 320px',
+                  minWidth: { xs: 220, sm: 260 },
+                  maxWidth: 360,
+                }}
+              />
               <Chip
                 label={hideDone ? 'Show done' : 'Hide done'}
                 clickable
@@ -3186,27 +3223,13 @@ const topLocations = useMemo(() => {
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: { xs: 'minmax(0, 1fr) auto', md: '1.35fr repeat(5, minmax(130px, 1fr))' },
+                gridTemplateColumns: { xs: '1fr', md: 'repeat(6, minmax(130px, 1fr))' },
                 gap: 1,
                 padding: { xs: 1.5, md: 2 },
                 borderBottom: '1px solid var(--borderSoft)',
                 background: 'var(--panelSoft)',
               }}
             >
-              <TextField
-                value={query}
-                onChange={(event) => {
-                  setQuery(event.target.value)
-                  setPage(0)
-                }}
-                placeholder='Search event, client, type, location, package, source'
-                size='small'
-                slotProps={{
-                  input: {
-                    startAdornment: <FiSearch style={{ marginRight: 8, color: 'var(--muted)' }} />,
-                  },
-                }}
-              />
               <Button
                 variant={mobileFiltersOpen ? 'contained' : 'outlined'}
                 startIcon={<FiFilter />}
@@ -3216,6 +3239,7 @@ const topLocations = useMemo(() => {
                   display: { xs: 'inline-flex', md: 'none' },
                   minWidth: 44,
                   px: 1.25,
+                  justifySelf: 'end',
                   '& .MuiButton-startIcon': { margin: 0 },
                 }}
               >
@@ -3798,8 +3822,18 @@ const topLocations = useMemo(() => {
         {viewMode === 'analytics' ? (
           <>
             <Box component={Card} sx={{ display: 'flex', alignItems: 'center', gap: 1, background: 'var(--panel)', mb: 2, px: { xs: 1, md: 2 } }}>
-              <Tabs value={analyticsTab} onChange={(_, value: 'business' | 'crew') => setAnalyticsTab(value)} sx={{ flex: 1 }}>
-                <Tab value='business' label='Business analytics' />
+              <Tabs
+                value={analyticsTab}
+                onChange={(_, value: AnalyticsTab) => setAnalyticsTab(value)}
+                variant='scrollable'
+                scrollButtons='auto'
+                sx={{ flex: 1, minWidth: 0 }}
+              >
+                <Tab value='overview' label='Overview' />
+                <Tab value='earnings' label='Earnings' />
+                <Tab value='expenses' label='Expenses' />
+                <Tab value='clients' label='Clients' />
+                <Tab value='packages' label='Packages' />
                 <Tab value='crew' label='Crew payroll' />
               </Tabs>
               <TextField
@@ -3813,40 +3847,7 @@ const topLocations = useMemo(() => {
                 {yearOptions.map((year) => <MenuItem key={year} value={year}>{year}</MenuItem>)}
               </TextField>
             </Box>
-            <Box sx={{ display: analyticsTab === 'business' ? 'contents' : 'none' }}>
-            <Box
-              component={Card}
-              sx={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '0.65rem',
-                alignItems: 'center',
-                marginBottom: 2,
-                background: 'var(--panel)',
-                borderRadius: '8px',
-                padding: { xs: 1.5, md: 2 },
-              }}
-            >
-              <Typography sx={{ fontSize: 13, fontWeight: 650, color: 'var(--text)', marginRight: '0.25rem' }}>
-                Revenue year
-              </Typography>
-              <TextField
-                select
-                size='small'
-                value={yearFilter}
-                onChange={(event) => setYearFilter(event.target.value)}
-                sx={{ minWidth: 150 }}
-              >
-                {yearOptions.map((year) => (
-                  <MenuItem key={year} value={year}>
-                    {year}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <Typography sx={{ fontSize: 12.5, color: 'var(--muted)' }}>
-                Analytics exclude only records without an event date.
-              </Typography>
-            </Box>
+            {analyticsTab !== 'crew' ? (
             <Box
               sx={{
                 display: 'grid',
@@ -3855,8 +3856,50 @@ const topLocations = useMemo(() => {
               }}
             >
             <AnalyticsCard
+              title='Earnings snapshot'
+              description='Gross revenue, recorded costs, and net earnings for the selected year.'
+              visible={analyticsTab === 'earnings'}
+            >
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 1, mt: 2 }}>
+                {[
+                  ['Gross earnings', getGross(activeEvents), '#34d399'],
+                  ['Expenses', getExpenses(activeEvents), '#fb7185'],
+                  ['Net earnings', getGross(activeEvents) - getExpenses(activeEvents), '#818cf8'],
+                ].map(([label, value, color]) => (
+                  <Box key={String(label)} sx={{ p: 1.5, borderRadius: '8px', background: 'var(--panelSoft)', border: '1px solid var(--borderSoft)' }}>
+                    <Typography sx={{ fontSize: 11, color: 'var(--muted)', fontWeight: 650, textTransform: 'uppercase' }}>{label}</Typography>
+                    <Typography sx={{ mt: 0.5, fontSize: 21, fontWeight: 720, color }}>{peso.format(Number(value))}</Typography>
+                  </Box>
+                ))}
+              </Box>
+            </AnalyticsCard>
+
+            <AnalyticsCard
+              title='Top clients'
+              description='Highest-value active client relationships for the selected year.'
+              visible={analyticsTab === 'clients'}
+            >
+              <Stack spacing={1.1} sx={{ marginTop: '1.3rem' }}>
+                {clientRevenue.map(([client, value]) => (
+                  <DataBar
+                    key={client}
+                    label={client}
+                    value={peso.format(value.revenue)}
+                    helper={`${value.count} events | avg ${peso.format(average(value.revenue, value.count))}`}
+                    percentage={(value.revenue / maxClientRevenue) * 100}
+                    color='linear-gradient(90deg, #a78bfa, #38bdf8)'
+                  />
+                ))}
+                {clientRevenue.length === 0 ? (
+                  <Typography sx={{ color: 'var(--muted)', mt: 2 }}>No client revenue for this period.</Typography>
+                ) : null}
+              </Stack>
+            </AnalyticsCard>
+
+            <AnalyticsCard
               title='Active revenue by year'
               description='Non-cancelled scheduled revenue grouped by event year.'
+              visible={analyticsTab === 'earnings'}
             >
               <Stack spacing={1.1} sx={{ marginTop: '1.3rem' }}>
                 {yearlyRevenue.map(([year, value]) => (
@@ -3875,6 +3918,7 @@ const topLocations = useMemo(() => {
             <AnalyticsCard
               title='Business composition'
               description='Revenue split by event type for the selected pipeline scope.'
+              visible={analyticsTab === 'packages'}
             >
               <DonutChart
                 slices={eventTypeRevenue.slice(0, 5).map(([label, value], index) => ({
@@ -3887,6 +3931,7 @@ const topLocations = useMemo(() => {
             <AnalyticsCard
               title='Monthly revenue'
               description='Non-cancelled agreed amounts over the latest active months.'
+              visible={analyticsTab === 'earnings'}
             >
               <Box sx={{ display: 'flex', alignItems: 'end', gap: '0.7rem', height: 280, marginTop: '1.4rem' }}>
                 {monthlyRevenue.map((item) => (
@@ -3913,6 +3958,7 @@ const topLocations = useMemo(() => {
             <AnalyticsCard
               title='Monthly expense rate'
               description='Expenses as a share of non-cancelled gross revenue by month.'
+              visible={analyticsTab === 'expenses'}
             >
               <Stack spacing={1.1} sx={{ marginTop: '1.3rem' }}>
                 {monthlyExpenseRate.map((item) => (
@@ -3934,6 +3980,7 @@ const topLocations = useMemo(() => {
             <AnalyticsCard
               title='Expenses by category'
               description='Largest non-cancelled expense categories for the selected year.'
+              visible={analyticsTab === 'expenses'}
             >
               <Stack spacing={1.1} sx={{ marginTop: '1.3rem' }}>
                 {expenseTypeTotals.map(([type, value]) => (
@@ -3955,6 +4002,7 @@ const topLocations = useMemo(() => {
             <AnalyticsCard
               title='Status mix'
               description='Operational state of all records, including cancelled leads.'
+              visible={analyticsTab === 'overview'}
             >
               <Stack spacing={1.1} sx={{ marginTop: '1.3rem' }}>
                 {statusMix.map(([status, value]) => (
@@ -3979,6 +4027,7 @@ const topLocations = useMemo(() => {
             <AnalyticsCard
               title='Event statuses'
               description='Distribution using the standardized event workflow.'
+              visible={analyticsTab === 'overview'}
             >
               <Stack spacing={1.1} sx={{ marginTop: '1.3rem' }}>
                 {workflowStatusMix.map(([stage, value]) => (
@@ -4003,6 +4052,7 @@ const topLocations = useMemo(() => {
             <AnalyticsCard
               title='Revenue by event type'
               description='Which event categories are driving the most non-cancelled revenue.'
+              visible={analyticsTab === 'packages'}
             >
               <Stack spacing={1.1} sx={{ marginTop: '1.3rem' }}>
                 {eventTypeRevenue.map(([eventType, value]) => (
@@ -4021,6 +4071,7 @@ const topLocations = useMemo(() => {
             <AnalyticsCard
               title='Revenue by package'
               description='Package-level revenue and average value for active bookings.'
+              visible={analyticsTab === 'packages'}
             >
               <Stack spacing={1.1} sx={{ marginTop: '1.3rem' }}>
                 {packageRevenue.map(([packageName, value]) => (
@@ -4038,6 +4089,7 @@ const topLocations = useMemo(() => {
             <AnalyticsCard
               title='Top locations'
               description='Most repeated active event locations from the tracker.'
+              visible={analyticsTab === 'clients'}
             >
               <Stack spacing={1.1} sx={{ marginTop: '1.3rem' }}>
                 {topLocations.map(([location, count]) => (
@@ -4055,6 +4107,7 @@ const topLocations = useMemo(() => {
             <AnalyticsCard
               title='Booking source value'
               description='Where the highest-value active bookings are coming from.'
+              visible={analyticsTab === 'clients'}
             >
               <Stack spacing={1.1} sx={{ marginTop: '1.3rem' }}>
                 {sourceRevenue.map(([source, value]) => (
@@ -4073,6 +4126,7 @@ const topLocations = useMemo(() => {
             <AnalyticsCard
               title='Booking quality'
               description='Quick read on completed job value and cancellation pressure.'
+              visible={analyticsTab === 'overview'}
             >
               <Box
                 sx={{
@@ -4109,7 +4163,7 @@ const topLocations = useMemo(() => {
               </Box>
             </AnalyticsCard>
             </Box>
-            </Box>
+            ) : null}
 
             {analyticsTab === 'crew' ? (
               <Stack spacing={2}>
