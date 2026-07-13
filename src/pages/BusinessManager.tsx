@@ -39,8 +39,10 @@ import {
   FiBarChart2,
   FiCalendar,
   FiCheckCircle,
+  FiChevronDown,
   FiChevronLeft,
   FiChevronRight,
+  FiChevronUp,
   FiCircle,
   FiCopy,
   FiLogOut,
@@ -86,6 +88,7 @@ type CrewMember = { id: string; name: string }
 
 type EventRecord = {
   id: string
+  createdAt: string
   name: string
   agreedAmount: number | null
   amountPaid: number | null
@@ -106,10 +109,12 @@ type EventRecord = {
   recurringSeriesId: string
 }
 
-type EventFormValues = Omit<EventRecord, 'id' | 'agreedAmount' | 'amountPaid' | 'expenses' | 'expenseCount' | 'expenseTotal' | 'recurringSeriesId'> & {
+type EventFormValues = Omit<EventRecord, 'id' | 'createdAt' | 'agreedAmount' | 'amountPaid' | 'expenses' | 'expenseCount' | 'expenseTotal' | 'recurringSeriesId'> & {
   agreedAmount: string
   amountPaid: string
 }
+
+type EventApiRecord = Partial<EventRecord> & { created_at?: string }
 
 type ViewMode = 'events' | 'calendar' | 'analytics' | 'clients' | 'venues'
 type ColorMode = 'light' | 'dark'
@@ -512,7 +517,10 @@ const formatEventDateRange = (event: Pick<EventRecord, 'eventDate' | 'eventEndDa
 
 const normalizeStatus = (status: string) => status.trim().toLowerCase()
 const isCancelled = (status: string) => normalizeStatus(status).includes('cancel')
-const isDone = (status: string) => normalizeStatus(status).includes('done')
+const isDone = (status: string) => {
+  const normalized = normalizeStatus(status)
+  return normalized.includes('done') || normalized.includes('complete')
+}
 const inferPipelineStage = (status: string) => {
   const normalized = normalizeStatus(status)
   if (normalized.includes('cancel')) return 'Cancelled'
@@ -580,8 +588,9 @@ const copyTextToClipboard = async (text: string) => {
   if (!copied) throw new Error('Copy is not supported by this browser')
 }
 
-const normalizeEventRecord = (event: Partial<EventRecord>): EventRecord => ({
+const normalizeEventRecord = (event: EventApiRecord): EventRecord => ({
   id: event.id || `evt-${Date.now()}`,
+  createdAt: event.createdAt || event.created_at || '',
   name: event.name || '',
   agreedAmount:
     typeof event.agreedAmount === 'number' && Number.isFinite(event.agreedAmount)
@@ -832,6 +841,35 @@ const average = (total: number, count: number) =>
 
 const hasSchedule = (event: EventRecord) => Boolean(event.eventDate.trim())
 
+const NEW_EVENT_WINDOW_MS = 24 * 60 * 60 * 1000
+const isNewlyCreatedEvent = (event: EventRecord) => {
+  const createdAt = Date.parse(event.createdAt)
+  const age = Date.now() - createdAt
+
+  return Number.isFinite(createdAt) && age >= 0 && age <= NEW_EVENT_WINDOW_MS
+}
+
+const getDaysUntilEvent = (eventDate: string) => {
+  const match = eventDate.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return null
+
+  const [, year, month, day] = match
+  const today = new Date()
+  const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
+  const eventUtc = Date.UTC(Number(year), Number(month) - 1, Number(day))
+
+  return Math.round((eventUtc - todayUtc) / (24 * 60 * 60 * 1000))
+}
+
+const countdownBadgeDetails = [
+  null,
+  { emoji: '🚨', background: 'linear-gradient(135deg, #991b1b, #450a0a)', border: '#f87171', glow: 'rgba(248, 113, 113, 0.35)' },
+  { emoji: '⚡', background: 'linear-gradient(135deg, #c2410c, #7c2d12)', border: '#fb923c', glow: 'rgba(251, 146, 60, 0.32)' },
+  { emoji: '🎉', background: 'linear-gradient(135deg, #7e22ce, #3b0764)', border: '#c084fc', glow: 'rgba(192, 132, 252, 0.3)' },
+  { emoji: '⏳', background: 'linear-gradient(135deg, #1d4ed8, #172554)', border: '#60a5fa', glow: 'rgba(96, 165, 250, 0.3)' },
+  { emoji: '🗓️', background: 'linear-gradient(135deg, #047857, #022c22)', border: '#34d399', glow: 'rgba(52, 211, 153, 0.28)' },
+] as const
+
 const getBalance = (event: EventRecord) =>
   Math.max((event.agreedAmount ?? 0) - (event.amountPaid ?? 0), 0)
 
@@ -911,12 +949,14 @@ const DashboardMetric = ({
   detail,
   accent,
   onClick,
+  compact = false,
 }: {
   label: string
   value: ReactNode
   detail: string
   accent: string
   onClick?: () => void
+  compact?: boolean
 }) => (
   <Card
     role={onClick ? 'button' : undefined}
@@ -933,7 +973,7 @@ const DashboardMetric = ({
       position: 'relative',
       borderRadius: '8px',
       background: 'var(--panel)',
-      minWidth: { xs: 'min(78vw, 280px)', sm: 0 },
+      minWidth: compact ? 150 : { xs: 'min(78vw, 280px)', sm: 0 },
       scrollSnapAlign: { xs: 'start', sm: 'none' },
       overflow: 'hidden',
       cursor: onClick ? 'pointer' : 'default',
@@ -959,7 +999,12 @@ const DashboardMetric = ({
       },
     }}
   >
-    <CardContent sx={{ padding: { xs: 1.75, md: 2.5 }, '&:last-child': { paddingBottom: { xs: 1.75, md: 2.5 } } }}>
+    <CardContent
+      sx={{
+        padding: compact ? '0.85rem 1rem' : { xs: 1.75, md: 2.5 },
+        '&:last-child': { paddingBottom: compact ? '0.85rem' : { xs: 1.75, md: 2.5 } },
+      }}
+    >
       <Typography
         sx={{
           fontSize: 11,
@@ -974,18 +1019,20 @@ const DashboardMetric = ({
       <Typography
         component='div'
         sx={{
-          fontSize: { xs: 22, md: 30 },
+          fontSize: compact ? 17 : { xs: 22, md: 30 },
           lineHeight: 1.1,
           fontWeight: 700,
           color: 'text.primary',
-          marginTop: '0.5rem',
+          marginTop: compact ? '0.3rem' : '0.5rem',
         }}
       >
         {value}
       </Typography>
-      <Typography sx={{ fontSize: 13, color: 'text.secondary', marginTop: '0.35rem' }}>
-        {detail}
-      </Typography>
+      {!compact ? (
+        <Typography sx={{ fontSize: 13, color: 'text.secondary', marginTop: '0.35rem' }}>
+          {detail}
+        </Typography>
+      ) : null}
     </CardContent>
   </Card>
 )
@@ -1991,6 +2038,7 @@ const BusinessManager = () => {
   const [currentMonthIncomeEvents, setCurrentMonthIncomeEvents] = useState<EventRecord[]>([])
   const [incomeBreakdownLoading, setIncomeBreakdownLoading] = useState(false)
   const [incomeBreakdownError, setIncomeBreakdownError] = useState('')
+  const [summaryExpanded, setSummaryExpanded] = useState(false)
   const [colorMode, setColorMode] = useState<ColorMode>('dark')
   const navigate = useNavigate()
   const theme = managerThemes[colorMode]
@@ -2519,6 +2567,7 @@ const topLocations = useMemo(() => {
     const nextEvent: EventRecord = {
       ...values,
       id: editingEvent?.id ?? `evt-${Date.now()}`,
+      createdAt: editingEvent?.createdAt ?? '',
       agreedAmount: parseAmountInput(values.agreedAmount),
       amountPaid: parseAmountInput(values.amountPaid),
       pipelineStage: inferPipelineStage(values.status),
@@ -2827,22 +2876,49 @@ const topLocations = useMemo(() => {
           </Card>
         ) : null}
 
-        <Box
-          aria-label='Business summary metrics'
-          sx={{
-            display: { xs: 'flex', sm: 'grid' },
-            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' },
-            overflowX: { xs: 'auto', sm: 'visible' },
-            overscrollBehaviorX: 'contain',
-            scrollSnapType: { xs: 'x mandatory', sm: 'none' },
-            scrollbarWidth: 'none',
-            WebkitOverflowScrolling: 'touch',
-            '&::-webkit-scrollbar': { display: 'none' },
-            gap: 1.5,
-            marginBottom: 2,
-            paddingBottom: { xs: 0.5, sm: 0 },
-          }}
-        >
+        <Box sx={{ marginBottom: 2 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              minHeight: 34,
+              mb: 0.75,
+            }}
+          >
+            <Typography sx={{ color: 'var(--muted)', fontSize: 12, fontWeight: 650, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              Business summary
+            </Typography>
+            <Button
+              size='small'
+              variant='text'
+              startIcon={summaryExpanded ? <FiChevronUp /> : <FiChevronDown />}
+              onClick={() => setSummaryExpanded((expanded) => !expanded)}
+              aria-expanded={summaryExpanded}
+              aria-controls='business-summary-metrics'
+              sx={{ color: 'var(--muted)', textTransform: 'none', fontWeight: 620, minWidth: 0, px: 1 }}
+            >
+              {summaryExpanded ? 'Compact' : 'Expand'}
+            </Button>
+          </Box>
+          <Box
+            id='business-summary-metrics'
+            aria-label='Business summary metrics'
+            sx={{
+              display: summaryExpanded ? { xs: 'flex', sm: 'grid' } : 'grid',
+              gridTemplateColumns: summaryExpanded
+                ? { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' }
+                : 'repeat(7, minmax(150px, 1fr))',
+              overflowX: summaryExpanded ? { xs: 'auto', sm: 'visible' } : 'auto',
+              overscrollBehaviorX: 'contain',
+              scrollSnapType: { xs: 'x mandatory', sm: 'none' },
+              scrollbarWidth: 'none',
+              WebkitOverflowScrolling: 'touch',
+              '&::-webkit-scrollbar': { display: 'none' },
+              gap: 1.5,
+              paddingBottom: { xs: 0.5, sm: 0 },
+            }}
+          >
           <DashboardMetric
             label='Completed event income'
             value={
@@ -2859,6 +2935,7 @@ const topLocations = useMemo(() => {
             }
             detail={`Expenses ${peso.format(completedIncomeExpenses)} (${completedExpenseRate} of gross)${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
             accent='#34d399'
+            compact={!summaryExpanded}
             onClick={() => {
               setIncomeBreakdownMode('completed')
               setIncomeBreakdownOpen(true)
@@ -2880,6 +2957,7 @@ const topLocations = useMemo(() => {
             }
             detail={`Done this month - Expenses ${peso.format(currentMonthExpenses)} (${currentMonthExpenseRate} of gross)`}
             accent='#f59e0b'
+            compact={!summaryExpanded}
             onClick={() => {
               setIncomeBreakdownMode('month')
               setIncomeBreakdownOpen(true)
@@ -2890,31 +2968,37 @@ const topLocations = useMemo(() => {
             value={peso.format(eventSummary.totalExpenses)}
             detail={`All recorded event expenses${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
             accent='#f43f5e'
+            compact={!summaryExpanded}
           />
           <DashboardMetric
             label='Top client'
             value={eventSummary.topClient}
             detail={eventSummary.topClientRevenue > 0 ? `${peso.format(eventSummary.topClientRevenue)} total booked` : 'No client data yet'}
             accent='#a78bfa'
+            compact={!summaryExpanded}
           />
           <DashboardMetric
             label='Avg monthly income'
             value={peso.format(eventSummary.averageMonthlyRevenue)}
             detail='Average monthly revenue across all recorded months'
             accent='var(--accent2)'
+            compact={!summaryExpanded}
           />
           <DashboardMetric
             label='Strongest month'
             value={formatYearMonth(eventSummary.strongestMonth)}
             detail={eventSummary.strongestMonthRevenue > 0 ? `${peso.format(eventSummary.strongestMonthRevenue)} in revenue` : 'No data yet'}
             accent='#34d399'
+            compact={!summaryExpanded}
           />
           <DashboardMetric
             label='Weakest month'
             value={formatYearMonth(eventSummary.weakestMonth)}
             detail={eventSummary.weakestMonthRevenue > 0 ? `${peso.format(eventSummary.weakestMonthRevenue)} in revenue` : 'No data yet'}
             accent='#fb923c'
+            compact={!summaryExpanded}
           />
+          </Box>
         </Box>
 
         <Box
@@ -3281,6 +3365,10 @@ const topLocations = useMemo(() => {
                   {events.map((event) => {
                     const tone = statusTone(event.status)
                     const eventIsDone = isDone(event.status)
+                    const daysUntilEvent = getDaysUntilEvent(event.eventDate)
+                    const countdownBadge = !eventIsDone && !isCancelled(event.status) && daysUntilEvent != null
+                      ? countdownBadgeDetails[daysUntilEvent]
+                      : null
 
                     return (
                       <TableRow
@@ -3331,8 +3419,48 @@ const topLocations = useMemo(() => {
                           )}
                         </TableCell>
                         {visibleColumns.event ? (
-                          <TableCell sx={{ width: 190, maxWidth: 220 }}>
-                            <Typography noWrap sx={{ fontSize: 13.5, fontWeight: 650, color: 'var(--text)' }}>{event.name || 'Untitled event'}</Typography>
+                          <TableCell sx={{ width: 230, maxWidth: 260 }}>
+                            <Stack direction='row' spacing={0.75} sx={{ minWidth: 0, alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
+                              <Typography noWrap sx={{ minWidth: 0, fontSize: 13.5, fontWeight: 650, color: 'var(--text)' }}>
+                                {event.name || 'Untitled event'}
+                              </Typography>
+                              {isNewlyCreatedEvent(event) ? (
+                                <Chip
+                                  label='🔥 Newly added'
+                                  size='small'
+                                  sx={{
+                                    flex: '0 0 auto',
+                                    height: 20,
+                                    background: 'linear-gradient(135deg, #1e1b4b, #111827)',
+                                    color: '#ffffff',
+                                    border: '1px solid rgba(251, 146, 60, 0.75)',
+                                    boxShadow: '0 0 10px rgba(249, 115, 22, 0.3)',
+                                    fontSize: 10,
+                                    fontWeight: 750,
+                                    letterSpacing: '0.02em',
+                                    '& .MuiChip-label': { px: 0.75 },
+                                  }}
+                                />
+                              ) : null}
+                              {countdownBadge && daysUntilEvent != null ? (
+                                <Chip
+                                  label={`${countdownBadge.emoji} ${daysUntilEvent} ${daysUntilEvent === 1 ? 'day' : 'days'} left`}
+                                  size='small'
+                                  sx={{
+                                    flex: '0 0 auto',
+                                    height: 20,
+                                    background: countdownBadge.background,
+                                    color: '#ffffff',
+                                    border: `1px solid ${countdownBadge.border}`,
+                                    boxShadow: `0 0 9px ${countdownBadge.glow}`,
+                                    fontSize: 10,
+                                    fontWeight: 750,
+                                    letterSpacing: '0.01em',
+                                    '& .MuiChip-label': { px: 0.75 },
+                                  }}
+                                />
+                              ) : null}
+                            </Stack>
                             <Typography noWrap sx={{ fontSize: 12, color: 'var(--muted)' }}>
                               {event.notes || 'No notes'}
                             </Typography>
