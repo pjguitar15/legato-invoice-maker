@@ -1301,6 +1301,7 @@ const EventDialog = ({
   crewOptions,
   editingEvent,
   eventTypeOptions,
+  initialDate,
   initialTab,
   packageOptions,
   savingEvent,
@@ -1312,6 +1313,7 @@ const EventDialog = ({
   crewOptions: CrewMember[]
   editingEvent: EventRecord | null
   eventTypeOptions: string[]
+  initialDate?: string
   initialTab: 'details' | 'expenses'
   packageOptions: string[]
   savingEvent: boolean
@@ -1320,7 +1322,11 @@ const EventDialog = ({
   onOptionsChanged: () => void
   onSave: (values: EventFormValues, expenses: EventExpense[], repeatWeekly: boolean) => Promise<void>
 }) => {
-  const initialValues = editingEvent ? toFormValues(editingEvent) : emptyForm
+  const initialValues = editingEvent
+    ? toFormValues(editingEvent)
+    : initialDate
+      ? { ...emptyForm, eventDate: initialDate, eventEndDate: initialDate }
+      : emptyForm
   const [activeTab, setActiveTab] = useState<'details' | 'expenses'>(initialTab)
   const [expenses, setExpenses] = useState<EventExpenseFormValue[]>(
     () => editingEvent?.expenses.map((expense) => ({ ...expense, amount: String(expense.amount) })) ?? [],
@@ -2033,6 +2039,7 @@ const BusinessManager = () => {
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(25)
   const [editingEvent, setEditingEvent] = useState<EventRecord | null>(null)
+  const [newEventDate, setNewEventDate] = useState('')
   const [dialogInitialTab, setDialogInitialTab] = useState<'details' | 'expenses'>('details')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [calendarEventDetails, setCalendarEventDetails] = useState<EventRecord | null>(null)
@@ -2527,12 +2534,21 @@ const topLocations = useMemo(() => {
 
   const openCreateDialog = () => {
     setEditingEvent(null)
+    setNewEventDate('')
+    setDialogInitialTab('details')
+    setDialogOpen(true)
+  }
+
+  const openCreateDialogForDate = (date: Date) => {
+    setEditingEvent(null)
+    setNewEventDate(getDateKey(date))
     setDialogInitialTab('details')
     setDialogOpen(true)
   }
 
   const openEditDialog = (event: EventRecord, initialTab: 'details' | 'expenses' = 'details') => {
     setEditingEvent(event)
+    setNewEventDate('')
     setDialogInitialTab(initialTab)
     setDialogOpen(true)
   }
@@ -3714,27 +3730,76 @@ const topLocations = useMemo(() => {
                 {calendarDays.map((cell, index) => (
                   <Box
                     key={`${cell.date?.toISOString() ?? 'blank'}-${index}`}
+                    onClick={() => {
+                      if (cell.date) openCreateDialogForDate(cell.date)
+                    }}
                     sx={{
+                      position: 'relative',
                       minHeight: { xs: 92, md: 124 },
                       padding: { xs: 1, md: 1.25 },
                       borderRight: index % 7 === 6 ? 'none' : '1px solid var(--borderSoft)',
                       borderBottom: index >= calendarDays.length - 7 ? 'none' : '1px solid var(--borderSoft)',
                       background: cell.date ? 'var(--panel)' : 'var(--panelSoft)',
                       overflow: 'hidden',
+                      cursor: cell.date ? 'pointer' : 'default',
+                      transition: 'background 140ms ease, box-shadow 140ms ease',
+                      '&:hover': cell.date
+                        ? {
+                            background: 'color-mix(in srgb, var(--accent) 5%, var(--panel))',
+                            boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent)',
+                          }
+                        : undefined,
+                      '& .calendar-add-action': {
+                        opacity: 0,
+                        transform: 'scale(0.85)',
+                        transition: 'opacity 140ms ease, transform 140ms ease',
+                      },
+                      '&:hover .calendar-add-action, &:focus-within .calendar-add-action': {
+                        opacity: 1,
+                        transform: 'scale(1)',
+                      },
+                      '@media (hover: none)': {
+                        '& .calendar-add-action': { opacity: 0.72, transform: 'scale(1)' },
+                      },
                     }}
                   >
                     {cell.date ? (
                       <>
-                        <Typography sx={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>
-                          {cell.date.getDate()}
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 24 }}>
+                          <Typography sx={{ fontSize: 12, fontWeight: 650, color: 'var(--muted)' }}>
+                            {cell.date.getDate()}
+                          </Typography>
+                          <Tooltip title={`Add event on ${formatTableDate(getDateKey(cell.date))}`} arrow>
+                            <IconButton
+                              className='calendar-add-action'
+                              size='small'
+                              aria-label={`Add event on ${formatTableDate(getDateKey(cell.date))}`}
+                              onClick={(clickEvent) => {
+                                clickEvent.stopPropagation()
+                                openCreateDialogForDate(cell.date as Date)
+                              }}
+                              sx={{
+                                width: 24,
+                                height: 24,
+                                color: 'var(--primaryText)',
+                                background: 'var(--primary)',
+                                '&:hover': { background: 'var(--primaryHover)' },
+                              }}
+                            >
+                              <FiPlus size={14} />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
                         <Stack spacing={0.45} sx={{ marginTop: '0.45rem' }}>
                           {cell.events.slice(0, 3).map((event) => (
                             <Box
                               key={event.id}
                               role='button'
                               tabIndex={0}
-                              onClick={() => setCalendarEventDetails(event)}
+                              onClick={(clickEvent) => {
+                                clickEvent.stopPropagation()
+                                setCalendarEventDetails(event)
+                              }}
                               onKeyDown={(keyboardEvent) => {
                                 if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
                                   keyboardEvent.preventDefault()
@@ -4622,10 +4687,11 @@ const topLocations = useMemo(() => {
 
       {dialogOpen ? (
         <EventDialog
-          key={editingEvent?.id ?? 'new-event'}
+          key={editingEvent?.id ?? `new-event-${newEventDate || 'today'}`}
           crewOptions={eventFacets.crews}
           editingEvent={editingEvent}
           eventTypeOptions={eventFacets.eventTypes}
+          initialDate={newEventDate || undefined}
           initialTab={dialogInitialTab}
           packageOptions={eventFacets.packages}
           savingEvent={savingEvent}
