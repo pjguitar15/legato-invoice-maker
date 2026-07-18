@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react'
 import { useDragScroll } from '../hooks/useDragScroll'
 import {
   Autocomplete,
@@ -26,7 +26,6 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TablePagination,
   TableRow,
   Tabs,
   TextField,
@@ -39,11 +38,11 @@ import {
   FiBarChart2,
   FiCalendar,
   FiCheckCircle,
+  FiCheckSquare,
   FiChevronDown,
   FiChevronLeft,
   FiChevronRight,
   FiChevronUp,
-  FiCircle,
   FiCopy,
   FiLogOut,
   FiMapPin,
@@ -70,6 +69,8 @@ const expenseTypes = [
   'Others',
 ] as const
 
+const EVENTS_BATCH_SIZE = 20
+
 type ExpenseType = (typeof expenseTypes)[number]
 
 type EventExpense = {
@@ -89,6 +90,7 @@ type CrewMember = { id: string; name: string }
 type EventRecord = {
   id: string
   createdAt: string
+  recordType: 'event' | 'churchConsultation'
   name: string
   agreedAmount: number | null
   amountPaid: number | null
@@ -107,6 +109,12 @@ type EventRecord = {
   pipelineStage: string
   status: string
   recurringSeriesId: string
+  churchName: string
+  contactName: string
+  contactPhone: string
+  contactEmail: string
+  consultationConcern: string
+  assignedTo: string
 }
 
 type EventFormValues = Omit<EventRecord, 'id' | 'createdAt' | 'agreedAmount' | 'amountPaid' | 'expenses' | 'expenseCount' | 'expenseTotal' | 'recurringSeriesId'> & {
@@ -164,6 +172,7 @@ type EventListParams = {
   sortField: SortField
   statusFilter: string
   yearFilter: string
+  recordTypeFilter: string
 }
 
 type EventListMeta = {
@@ -196,6 +205,10 @@ type EventSummary = {
   weakestMonthRevenue: number
 }
 
+type TopClient = { name: string; revenue: number }
+type ConfirmedMonth = { month: string; revenue: number }
+type AnalyticsBreakdown = { title: string; events: EventRecord[] }
+
 type CrewPayrollSummary = {
   crewId: string
   crewName: string
@@ -214,12 +227,27 @@ type CrewPayrollRecord = {
   note: string
 }
 
+const getCrewEventBreakdown = (records: CrewPayrollRecord[], crewId: string) => {
+  const events = new Map<string, { eventId: string; eventName: string; eventDate: string; amount: number }>()
+  records.filter((record) => record.crewId === crewId).forEach((record) => {
+    const current = events.get(record.eventId) ?? {
+      eventId: record.eventId,
+      eventName: record.eventName,
+      eventDate: record.eventDate,
+      amount: 0,
+    }
+    current.amount += record.amount
+    events.set(record.eventId, current)
+  })
+  return Array.from(events.values()).sort((a, b) => b.eventDate.localeCompare(a.eventDate))
+}
+
 const tableColumns: Array<{ key: ColumnKey; label: string }> = [
   { key: 'event', label: 'Event' },
   { key: 'date', label: 'Date' },
-  { key: 'client', label: 'Client' },
+  { key: 'client', label: 'Client / Church' },
   { key: 'location', label: 'Location' },
-  { key: 'type', label: 'Type' },
+  { key: 'type', label: 'Service' },
   { key: 'package', label: 'Package' },
   { key: 'amount', label: 'Amount' },
   { key: 'paid', label: 'Paid' },
@@ -236,6 +264,7 @@ const eventStatuses = [
   'Pencil Book',
   'Booked',
   'Deposit Paid',
+  'Paid in Full',
   'Completed',
   'Cancelled',
   'Lost',
@@ -454,10 +483,11 @@ const getLocalDateInputValue = (date = new Date()) => {
 }
 
 const emptyForm: EventFormValues = {
+  recordType: 'event',
   name: '',
   agreedAmount: '',
   amountPaid: '',
-  bookingSource: 'Unknown',
+  bookingSource: 'Facebook',
   clientName: '',
   eventDate: getLocalDateInputValue(),
   eventEndDate: getLocalDateInputValue(),
@@ -468,6 +498,12 @@ const emptyForm: EventFormValues = {
   packageName: '',
   pipelineStage: 'Booked',
   status: 'Booked',
+  churchName: '',
+  contactName: '',
+  contactPhone: '',
+  contactEmail: '',
+  consultationConcern: '',
+  assignedTo: '',
 }
 
 const formatYearMonth = (ym: string) => {
@@ -475,6 +511,8 @@ const formatYearMonth = (ym: string) => {
   const [year, month] = ym.split('-')
   return new Date(Number(year), Number(month) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' })
 }
+
+const formatMonthName = (ym: string) => formatYearMonth(ym).split(' ')[0]
 
 const peso = new Intl.NumberFormat('en-PH', {
   style: 'currency',
@@ -522,6 +560,7 @@ const isDone = (status: string) => {
   const normalized = normalizeStatus(status)
   return normalized.includes('done') || normalized.includes('complete')
 }
+const hasPayment = (event: Pick<EventRecord, 'amountPaid'>) => (event.amountPaid ?? 0) > 0
 const inferPipelineStage = (status: string) => {
   const normalized = normalizeStatus(status)
   if (normalized.includes('cancel')) return 'Cancelled'
@@ -536,6 +575,20 @@ const inferPipelineStage = (status: string) => {
 const parseAmountInput = (value: string) => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+const statusForPayment = (
+  status: string,
+  amountPaid: number | null,
+  agreedAmount: number | null,
+) => {
+  if (isDone(status) || isCancelled(status)) return status
+  if ((amountPaid ?? 0) <= 0) {
+    const normalized = normalizeStatus(status)
+    return normalized.includes('deposit') || normalized === 'paid in full' ? 'Booked' : status
+  }
+  if ((agreedAmount ?? 0) > 0 && (amountPaid ?? 0) >= (agreedAmount ?? 0)) return 'Paid in Full'
+  return 'Deposit Paid'
 }
 
 const toTimeInputValue = (value: string) => {
@@ -592,6 +645,7 @@ const copyTextToClipboard = async (text: string) => {
 const normalizeEventRecord = (event: EventApiRecord): EventRecord => ({
   id: event.id || `evt-${Date.now()}`,
   createdAt: event.createdAt || event.created_at || '',
+  recordType: event.recordType === 'churchConsultation' ? 'churchConsultation' : 'event',
   name: event.name || '',
   agreedAmount:
     typeof event.agreedAmount === 'number' && Number.isFinite(event.agreedAmount)
@@ -627,6 +681,12 @@ const normalizeEventRecord = (event: EventApiRecord): EventRecord => ({
   pipelineStage: event.pipelineStage || inferPipelineStage(event.status || ''),
   status: event.status || 'No status',
   recurringSeriesId: event.recurringSeriesId || '',
+  churchName: event.churchName || '',
+  contactName: event.contactName || '',
+  contactPhone: event.contactPhone || '',
+  contactEmail: event.contactEmail || '',
+  consultationConcern: event.consultationConcern || '',
+  assignedTo: event.assignedTo || '',
 })
 
 const toFormValues = (event: EventRecord): EventFormValues => ({
@@ -659,6 +719,7 @@ const fetchEventsFromApi = async (params: EventListParams, signal?: AbortSignal)
   if (params.statusFilter !== 'All') searchParams.set('status', params.statusFilter)
   if (params.packageFilter !== 'All') searchParams.set('packageName', params.packageFilter)
   if (params.eventTypeFilter !== 'All') searchParams.set('eventType', params.eventTypeFilter)
+  if (params.recordTypeFilter !== 'All') searchParams.set('recordType', params.recordTypeFilter)
   if (params.hideDone && params.savedView !== 'completed') searchParams.set('hideDone', 'true')
 
   const response = await fetch(`/api/events?${searchParams.toString()}`, { signal })
@@ -702,6 +763,7 @@ const fetchCompletedIncomeBreakdownFromApi = async (yearFilter: string, signal?:
         sortField: 'eventDate',
         statusFilter: 'All',
         yearFilter,
+        recordTypeFilter: 'All',
       },
       signal,
     )
@@ -713,6 +775,73 @@ const fetchCompletedIncomeBreakdownFromApi = async (yearFilter: string, signal?:
   } while (records.length < total)
 
   return records.filter((event) => !isCancelled(event.status))
+}
+
+const fetchAllEventsForYear = async (yearFilter: string, signal?: AbortSignal) => {
+  const limit = 100
+  const records: EventRecord[] = []
+  let page = 0
+  let total = 0
+
+  do {
+    const result = await fetchEventsFromApi({
+      eventTypeFilter: 'All',
+      hideDone: false,
+      packageFilter: 'All',
+      page,
+      query: '',
+      rowsPerPage: limit,
+      savedView: 'all',
+      sortDirection: 'desc',
+      sortField: 'eventDate',
+      statusFilter: 'All',
+      yearFilter,
+      recordTypeFilter: 'All',
+    }, signal)
+    records.push(...result.data)
+    total = result.meta.total
+    page += 1
+    if (result.data.length === 0) break
+  } while (records.length < total)
+
+  return records
+}
+
+const getTopClients = (records: EventRecord[], limit = 3): TopClient[] => {
+  const clients = new Map<string, TopClient & { eventCount: number }>()
+
+  records.filter((event) => !isCancelled(event.status) && event.clientName.trim()).forEach((event) => {
+    const name = event.clientName.trim()
+    const key = name.toLocaleLowerCase()
+    const current = clients.get(key) ?? { name, revenue: 0, eventCount: 0 }
+    current.revenue += event.agreedAmount ?? 0
+    current.eventCount += 1
+    clients.set(key, current)
+  })
+
+  return Array.from(clients.values())
+    .sort((a, b) => b.revenue - a.revenue || b.eventCount - a.eventCount || a.name.localeCompare(b.name))
+    .slice(0, limit)
+    .map(({ name, revenue }) => ({ name, revenue }))
+}
+
+const getConfirmedMonthRange = (records: EventRecord[]) => {
+  const months = new Map<string, number>()
+
+  records
+    .filter((event) => hasPayment(event) && !isCancelled(event.status) && getMonthKey(event.eventDate))
+    .forEach((event) => {
+      const month = getMonthKey(event.eventDate)
+      months.set(month, (months.get(month) ?? 0) + (event.agreedAmount ?? 0))
+    })
+
+  const ranked = Array.from(months, ([month, revenue]) => ({ month, revenue }))
+    .sort((a, b) => b.revenue - a.revenue || a.month.localeCompare(b.month))
+
+  return {
+    strongest: ranked[0] ?? null,
+    weakest: ranked.length ? [...ranked].sort((a, b) => a.revenue - b.revenue || a.month.localeCompare(b.month))[0] : null,
+  }
 }
 
 const fetchEventFacetsFromApi = async (signal?: AbortSignal) => {
@@ -831,6 +960,7 @@ const getDateKey = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
 const getCurrentMonthKey = () => getDateKey(new Date()).slice(0, 7)
+const getCurrentYear = () => String(new Date().getFullYear())
 const getMonthDate = (monthKey: string) => new Date(`${monthKey}-01T00:00:00`)
 const shiftMonthKey = (monthKey: string, offset: number) => {
   const monthDate = getMonthDate(monthKey)
@@ -941,7 +1071,37 @@ const statusTone = (status: string) => {
   }
   if (isDone(status)) return { bg: '#ecfdf3', color: '#027a48', border: '#abefc6' }
   if (isCancelled(status)) return { bg: '#fff1f3', color: '#c01048', border: '#fecdd6' }
+  if (normalizeStatus(status).includes('paid')) {
+    return { bg: '#ecfdf3', color: '#027a48', border: '#6ce9a6' }
+  }
   return { bg: '#eff8ff', color: '#175cd3', border: '#b2ddff' }
+}
+
+const packageBadgeTones = [
+  { background: 'linear-gradient(135deg, #2563eb, #4f46e5)', border: '#818cf8' },
+  { background: 'linear-gradient(135deg, #7c3aed, #c026d3)', border: '#d8b4fe' },
+  { background: 'linear-gradient(135deg, #0f766e, #059669)', border: '#5eead4' },
+  { background: 'linear-gradient(135deg, #c2410c, #ea580c)', border: '#fdba74' },
+] as const
+
+const getPackageBadgeTone = (packageName: string) => {
+  if (!packageName || packageName === 'Unspecified') {
+    return { background: 'var(--panelSoft)', border: 'var(--border)', color: 'var(--muted)' }
+  }
+  const hash = Array.from(packageName).reduce((total, character) => total + character.charCodeAt(0), 0)
+  return { ...packageBadgeTones[hash % packageBadgeTones.length], color: '#ffffff' }
+}
+
+const getPackageBadges = (packageName: string) => {
+  if (!/\bled(?:\s+wall)?\b/i.test(packageName)) return [packageName]
+
+  const primary = packageName
+    .replace(/\s*(?:,|•|\+)?\s*(?:w\/|with)?\s*(?:\d+k\s+)?led(?:\s+wall)?\b\s*(?:,|•|\+)?\s*/gi, ' · ')
+    .replace(/(?:\s*·\s*){2,}/g, ' · ')
+    .replace(/^\s*·\s*|\s*·\s*$/g, '')
+    .trim()
+
+  return primary ? [primary, 'LED Wall'] : ['LED Wall']
 }
 
 const DashboardMetric = ({
@@ -1075,14 +1235,29 @@ const DataBar = ({
   helper,
   percentage,
   color = 'linear-gradient(90deg, var(--accent2), var(--accent))',
+  breakdownEvents,
+  onOpenBreakdown,
 }: {
   label: string
   value: string
   helper?: string
   percentage: number
   color?: string
-}) => (
-  <Box>
+  breakdownEvents?: EventRecord[]
+  onOpenBreakdown?: () => void
+}) => {
+  const bar = (
+  <Box
+    role={onOpenBreakdown ? 'button' : undefined}
+    tabIndex={onOpenBreakdown ? 0 : undefined}
+    onClick={onOpenBreakdown}
+    onKeyDown={(event) => {
+      if (!onOpenBreakdown || (event.key !== 'Enter' && event.key !== ' ')) return
+      event.preventDefault()
+      onOpenBreakdown()
+    }}
+    sx={{ cursor: onOpenBreakdown ? 'pointer' : 'default', p: onOpenBreakdown ? 0.65 : 0, m: onOpenBreakdown ? -0.65 : 0, borderRadius: '8px', transition: 'background 140ms ease, transform 140ms ease', '&:hover, &:focus-visible': onOpenBreakdown ? { bgcolor: 'color-mix(in srgb, var(--accent) 8%, transparent)', transform: 'translateX(2px)', outline: 'none' } : undefined }}
+  >
     <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
       <Typography noWrap sx={{ fontSize: 13, fontWeight: 650, color: 'var(--text)' }}>
         {label}
@@ -1115,7 +1290,38 @@ const DataBar = ({
       />
     </Box>
   </Box>
-)
+  )
+
+  if (!breakdownEvents || !onOpenBreakdown) return bar
+  return (
+    <Tooltip
+      arrow
+      placement='top-start'
+      enterDelay={180}
+      title={(
+        <Box sx={{ width: 'min(340px, 78vw)', p: 0.75 }}>
+          <Typography sx={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{label}</Typography>
+          <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', mb: 1 }}>{breakdownEvents.length} matching events · Click for details</Typography>
+          <Stack spacing={0.65}>
+            {breakdownEvents.slice(0, 5).map((event) => (
+              <Box key={event.id} sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 1, p: 0.8, borderRadius: '7px', bgcolor: 'rgba(255,255,255,0.08)' }}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography noWrap sx={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>{event.name}</Typography>
+                  <Typography sx={{ fontSize: 10.5, color: 'rgba(255,255,255,0.65)' }}>{formatTableDate(event.eventDate)}</Typography>
+                </Box>
+                <Typography sx={{ fontSize: 12, fontWeight: 750, color: '#5eead4', alignSelf: 'center' }}>{peso.format(event.agreedAmount ?? 0)}</Typography>
+              </Box>
+            ))}
+            {breakdownEvents.length > 5 ? <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', textAlign: 'center' }}>+{breakdownEvents.length - 5} more events</Typography> : null}
+          </Stack>
+        </Box>
+      )}
+      slotProps={{ tooltip: { sx: { bgcolor: '#111827', border: '1px solid #334155', boxShadow: '0 18px 48px rgba(0,0,0,0.45)', maxWidth: 'none' } }, arrow: { sx: { color: '#111827' } } }}
+    >
+      {bar}
+    </Tooltip>
+  )
+}
 
 const DonutChart = ({
   slices,
@@ -1304,6 +1510,7 @@ const EventDialog = ({
   initialDate,
   initialTab,
   packageOptions,
+  recordType,
   savingEvent,
   theme,
   onClose,
@@ -1316,6 +1523,7 @@ const EventDialog = ({
   initialDate?: string
   initialTab: 'details' | 'expenses'
   packageOptions: string[]
+  recordType: EventRecord['recordType']
   savingEvent: boolean
   theme: ManagerTheme
   onClose: () => void
@@ -1325,8 +1533,9 @@ const EventDialog = ({
   const initialValues = editingEvent
     ? toFormValues(editingEvent)
     : initialDate
-      ? { ...emptyForm, eventDate: initialDate, eventEndDate: initialDate }
-      : emptyForm
+      ? { ...emptyForm, recordType, status: recordType === 'churchConsultation' ? 'Quoted' : 'Booked', eventDate: initialDate, eventEndDate: initialDate }
+      : { ...emptyForm, recordType, status: recordType === 'churchConsultation' ? 'Quoted' : 'Booked' }
+  const isConsultation = initialValues.recordType === 'churchConsultation'
   const [activeTab, setActiveTab] = useState<'details' | 'expenses'>(initialTab)
   const [expenses, setExpenses] = useState<EventExpenseFormValue[]>(
     () => editingEvent?.expenses.map((expense) => ({ ...expense, amount: String(expense.amount) })) ?? [],
@@ -1339,7 +1548,6 @@ const EventDialog = ({
   const [packageValue, setPackageValue] = useState(initialValues.packageName)
   const [optionError, setOptionError] = useState('')
   const [dateError, setDateError] = useState('')
-  const [repeatWeekly, setRepeatWeekly] = useState(false)
   const [savingOption, setSavingOption] = useState(false)
   const [deletingOption, setDeletingOption] = useState(false)
   const [optionToDelete, setOptionToDelete] = useState<{ kind: EventOptionKind; value: string } | null>(null)
@@ -1447,9 +1655,24 @@ const EventDialog = ({
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
     const values = eventFormFields.reduce((current, { name }) => {
-      current[name] = String(formData.get(name) ?? '')
+      ;(current as unknown as Record<string, string>)[name] = String(formData.get(name) ?? '')
       return current
     }, {} as EventFormValues)
+
+    values.recordType = (isConsultation ? 'churchConsultation' : 'event') as EventRecord['recordType']
+    values.churchName = String(formData.get('churchName') ?? '')
+    values.contactName = String(formData.get('contactName') ?? '')
+    values.contactPhone = String(formData.get('contactPhone') ?? '')
+    values.contactEmail = String(formData.get('contactEmail') ?? '')
+    values.consultationConcern = String(formData.get('consultationConcern') ?? '')
+    values.assignedTo = isConsultation ? 'Legato Team' : ''
+    if (isConsultation) {
+      values.name = values.churchName
+      values.clientName = values.churchName
+      values.eventEndDate = values.eventDate
+      values.eventType = ''
+      values.packageName = ''
+    }
 
     const normalizedExpenses = expenses.map((expense) => ({
       ...expense,
@@ -1458,12 +1681,6 @@ const EventDialog = ({
 
     if (values.eventEndDate && values.eventEndDate < values.eventDate) {
       setDateError('End date cannot be before the start date.')
-      setActiveTab('details')
-      return
-    }
-
-    if (repeatWeekly && new Date(`${values.eventDate}T00:00:00`).getDay() !== 0) {
-      setDateError('A recurring Sunday schedule must start on a Sunday.')
       setActiveTab('details')
       return
     }
@@ -1481,7 +1698,7 @@ const EventDialog = ({
 
     setExpenseError('')
     setDateError('')
-    await onSave(values, normalizedExpenses, repeatWeekly)
+    await onSave(values, normalizedExpenses, false)
   }
 
   return (
@@ -1528,7 +1745,7 @@ const EventDialog = ({
         }}
       >
         <DialogTitle sx={{ fontWeight: 700, color: theme.text, pb: 1 }}>
-          {editingEvent ? 'Edit event' : 'Add event'}
+          {editingEvent ? `Edit ${isConsultation ? 'church consultation' : 'event'}` : `Add ${isConsultation ? 'church consultation' : 'event'}`}
         </DialogTitle>
         <DialogContent>
           <Tabs
@@ -1561,7 +1778,29 @@ const EventDialog = ({
               paddingTop: 1,
             }}
           >
-            {eventFormFields.map(({ name, label }) => {
+            {isConsultation ? (
+              <>
+                <input type='hidden' name='recordType' value='churchConsultation' />
+                <TextField name='churchName' label='Church name' defaultValue={initialValues.churchName} required />
+                <TextField name='contactName' label='Contact person' defaultValue={initialValues.contactName} required />
+                <TextField name='contactPhone' label='Phone number' defaultValue={initialValues.contactPhone} />
+                <TextField name='contactEmail' label='Email address' type='email' defaultValue={initialValues.contactEmail} />
+                <TextField name='eventDate' label='Consultation date' type='date' defaultValue={initialValues.eventDate} required slotProps={{ inputLabel: { shrink: true }, htmlInput: { onClick: (event: MouseEvent<HTMLInputElement>) => event.currentTarget.showPicker?.() } }} />
+                <TextField name='eventTime' label='Start time' type='time' defaultValue={initialValues.eventTime} required slotProps={{ inputLabel: { shrink: true }, htmlInput: { step: 300, onClick: (event: MouseEvent<HTMLInputElement>) => event.currentTarget.showPicker?.() } }} />
+                <TextField name='location' label='Location' defaultValue={initialValues.location} sx={{ gridColumn: '1 / -1' }} />
+                <TextField name='consultationConcern' label='Consultation concern / service needed' defaultValue={initialValues.consultationConcern} multiline minRows={2} sx={{ gridColumn: '1 / -1' }} />
+                <TextField label='Assigned to' value='Legato Team' disabled />
+                <TextField name='agreedAmount' label='Consultation fee' type='number' defaultValue={initialValues.agreedAmount} />
+                <TextField name='amountPaid' label='Amount paid' type='number' defaultValue={initialValues.amountPaid} />
+                <TextField name='bookingSource' label='Booking source' select defaultValue={initialValues.bookingSource}>
+                  {bookingSources.map((source) => <MenuItem key={source} value={source}>{source}</MenuItem>)}
+                </TextField>
+                <TextField name='status' label='Status' select defaultValue={initialValues.status}>
+                  {Array.from(new Set([...eventStatuses, initialValues.status])).map((status) => <MenuItem key={status} value={status}>{status}</MenuItem>)}
+                </TextField>
+                <TextField name='notes' label='Notes' defaultValue={initialValues.notes} multiline minRows={3} sx={{ gridColumn: '1 / -1' }} />
+              </>
+            ) : eventFormFields.map(({ name, label }) => {
               if (name === 'eventType' || name === 'packageName') {
                 const kind: EventOptionKind = name === 'eventType' ? 'eventType' : 'package'
                 const options = name === 'eventType' ? availableEventTypes : availablePackages
@@ -1702,20 +1941,6 @@ const EventDialog = ({
                 </TextField>
               )
             })}
-            {!editingEvent ? (
-              <FormControlLabel
-                sx={{ gridColumn: '1 / -1', color: theme.text, mt: 0.5 }}
-                control={<Checkbox checked={repeatWeekly} onChange={(event) => setRepeatWeekly(event.target.checked)} />}
-                label={(
-                  <Box>
-                    <Typography sx={{ fontSize: 14, fontWeight: 650 }}>Repeat every Sunday</Typography>
-                    <Typography sx={{ fontSize: 12, color: theme.muted }}>
-                      Sundays are added automatically. Deleting one skips only that date.
-                    </Typography>
-                  </Box>
-                )}
-              />
-            ) : null}
           </Box>
           <Box sx={{ display: activeTab === 'expenses' ? 'block' : 'none' }}>
             {expenseError ? (
@@ -1998,6 +2223,11 @@ const BusinessManager = () => {
     weakestMonth: '-',
     weakestMonthRevenue: 0,
   })
+  const [topClients, setTopClients] = useState<TopClient[]>([])
+  const [confirmedMonths, setConfirmedMonths] = useState<{
+    strongest: ConfirmedMonth | null
+    weakest: ConfirmedMonth | null
+  }>({ strongest: null, weakest: null })
   const [savingEvent, setSavingEvent] = useState(false)
   const [deletingEventId, setDeletingEventId] = useState('')
   const [markingDoneId, setMarkingDoneId] = useState('')
@@ -2005,15 +2235,20 @@ const BusinessManager = () => {
   const [confirmDoneEvent, setConfirmDoneEvent] = useState<EventRecord | null>(null)
   const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<EventRecord | null>(null)
   const eventsTableRef = useDragScroll<HTMLDivElement>()
+  const loadingMoreEventsRef = useRef(false)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('events')
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTab>('overview')
   const [crewPayroll, setCrewPayroll] = useState<{ crews: CrewPayrollSummary[]; records: CrewPayrollRecord[] }>({ crews: [], records: [] })
   const [crewPayrollLoading, setCrewPayrollLoading] = useState(false)
+  const [selectedCrewId, setSelectedCrewId] = useState('')
+  const [analyticsBreakdown, setAnalyticsBreakdown] = useState<AnalyticsBreakdown | null>(null)
   const [query, setQuery] = useState('')
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [statusFilter, setStatusFilter] = useState('All')
   const [packageFilter, setPackageFilter] = useState('All')
   const [eventTypeFilter, setEventTypeFilter] = useState('All')
+  const [recordTypeFilter, setRecordTypeFilter] = useState('All')
   const [yearFilter, setYearFilter] = useState('All')
   const [savedView, setSavedView] = useState<SavedView>('all')
   const [hideDone, setHideDone] = useState(true)
@@ -2037,11 +2272,12 @@ const BusinessManager = () => {
   const [propertiesAnchor, setPropertiesAnchor] = useState<HTMLElement | null>(null)
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthKey())
   const [page, setPage] = useState(0)
-  const [rowsPerPage, setRowsPerPage] = useState(25)
   const [editingEvent, setEditingEvent] = useState<EventRecord | null>(null)
   const [newEventDate, setNewEventDate] = useState('')
   const [dialogInitialTab, setDialogInitialTab] = useState<'details' | 'expenses'>('details')
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [createTypeDialogOpen, setCreateTypeDialogOpen] = useState(false)
+  const [newRecordType, setNewRecordType] = useState<EventRecord['recordType']>('event')
   const [calendarEventDetails, setCalendarEventDetails] = useState<EventRecord | null>(null)
   const [incomeBreakdownOpen, setIncomeBreakdownOpen] = useState(false)
   const [incomeBreakdownMode, setIncomeBreakdownMode] = useState<'completed' | 'month'>('completed')
@@ -2055,6 +2291,28 @@ const BusinessManager = () => {
   const theme = managerThemes[colorMode]
   const muiTheme = useMemo(() => buildMuiTheme(colorMode), [colorMode])
   const deferredQuery = useDeferredValue(query)
+  const selectedCrew = crewPayroll.crews.find((crew) => crew.crewId === selectedCrewId) ?? null
+  const selectedCrewEvents = useMemo(
+    () => getCrewEventBreakdown(crewPayroll.records, selectedCrewId),
+    [crewPayroll.records, selectedCrewId],
+  )
+
+  useEffect(() => {
+    const focusEventSearch = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLocaleLowerCase() !== 'f') return
+
+      event.preventDefault()
+      setViewMode('events')
+      window.setTimeout(() => {
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+      }, 0)
+    }
+
+    window.addEventListener('keydown', focusEventSearch)
+    return () => window.removeEventListener('keydown', focusEventSearch)
+  }, [])
+
   const eventListParams = useMemo<EventListParams>(
     () => ({
       eventTypeFilter,
@@ -2062,12 +2320,13 @@ const BusinessManager = () => {
       packageFilter,
       page,
       query: deferredQuery,
-      rowsPerPage,
+      rowsPerPage: EVENTS_BATCH_SIZE,
       savedView,
       sortDirection,
       sortField,
       statusFilter,
       yearFilter,
+      recordTypeFilter,
     }),
     [
       eventTypeFilter,
@@ -2075,12 +2334,12 @@ const BusinessManager = () => {
       packageFilter,
       page,
       deferredQuery,
-      rowsPerPage,
       savedView,
       sortDirection,
       sortField,
       statusFilter,
       yearFilter,
+      recordTypeFilter,
     ],
   )
 
@@ -2092,7 +2351,11 @@ const BusinessManager = () => {
 
     fetchEventsFromApi(eventListParams, controller.signal)
       .then(({ data, meta }) => {
-        setEvents(data)
+        setEvents((current) => {
+          if (eventListParams.page === 0) return data
+          const existingIds = new Set(current.map((event) => event.id))
+          return [...current, ...data.filter((event) => !existingIds.has(event.id))]
+        })
         setEventsTotal(meta.total)
       })
       .catch((error: unknown) => {
@@ -2101,6 +2364,7 @@ const BusinessManager = () => {
       })
       .finally(() => {
         if (!controller.signal.aborted) {
+          loadingMoreEventsRef.current = false
           setEventsLoading(false)
         }
       })
@@ -2124,10 +2388,20 @@ const BusinessManager = () => {
   useEffect(() => {
     const controller = new AbortController()
 
-    fetchEventSummaryFromApi(yearFilter, controller.signal)
-      .then(setEventSummary)
+    const summaryYear = yearFilter === 'All' ? getCurrentYear() : yearFilter
+    Promise.all([
+      fetchEventSummaryFromApi(summaryYear, controller.signal),
+      fetchAllEventsForYear(summaryYear, controller.signal),
+    ])
+      .then(([summary, yearlyEvents]) => {
+        setEventSummary(summary)
+        setTopClients(getTopClients(yearlyEvents))
+        setConfirmedMonths(getConfirmedMonthRange(yearlyEvents))
+      })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return
+        setTopClients([])
+        setConfirmedMonths({ strongest: null, weakest: null })
         setEventsError(error instanceof Error ? error.message : 'Failed to load event summary')
       })
 
@@ -2155,17 +2429,18 @@ const BusinessManager = () => {
     setIncomeBreakdownLoading(true)
     setIncomeBreakdownError('')
 
-    const selectedCompletedEvents = fetchCompletedIncomeBreakdownFromApi(yearFilter, controller.signal)
-    const allCompletedEvents =
-      yearFilter === 'All'
+    const completedIncomeYear = yearFilter === 'All' ? getCurrentYear() : yearFilter
+    const selectedCompletedEvents = fetchCompletedIncomeBreakdownFromApi(completedIncomeYear, controller.signal)
+    const currentYearCompletedEvents =
+      completedIncomeYear === getCurrentYear()
         ? selectedCompletedEvents
-        : fetchCompletedIncomeBreakdownFromApi('All', controller.signal)
+        : fetchCompletedIncomeBreakdownFromApi(getCurrentYear(), controller.signal)
 
-    Promise.all([selectedCompletedEvents, allCompletedEvents])
-      .then(([selectedEvents, allEvents]) => {
+    Promise.all([selectedCompletedEvents, currentYearCompletedEvents])
+      .then(([selectedEvents, currentYearEvents]) => {
         setIncomeBreakdownEvents(selectedEvents)
         setCurrentMonthIncomeEvents(
-          allEvents.filter((event) => getMonthKey(event.eventDate) === getCurrentMonthKey()),
+          currentYearEvents.filter((event) => getMonthKey(event.eventDate) === getCurrentMonthKey()),
         )
       })
       .catch((error: unknown) => {
@@ -2205,15 +2480,6 @@ const BusinessManager = () => {
     (column) => visibleColumns[column.key],
   )
 
-  const lastPage = Math.max(Math.ceil(eventsTotal / rowsPerPage) - 1, 0)
-  const safePage = Math.min(page, lastPage)
-
-  useEffect(() => {
-    if (page > lastPage) {
-      setPage(lastPage)
-    }
-  }, [lastPage, page])
-
   const analyticsEvents = useMemo(
     () =>
       events.filter(
@@ -2235,7 +2501,7 @@ const BusinessManager = () => {
       : Math.round((analyticsEvents.filter((event) => isCancelled(event.status)).length / analyticsEvents.length) * 100)
 
   const monthlyRevenue = useMemo(() => {
-    const totals = new Map<string, { label: string; revenue: number; count: number }>()
+    const totals = new Map<string, { month: string; label: string; revenue: number; count: number }>()
 
     events.forEach((event) => {
       if (!hasSchedule(event)) return
@@ -2247,6 +2513,7 @@ const BusinessManager = () => {
 
       const date = getMonthDate(key)
       const current = totals.get(key) ?? {
+        month: key,
         label: shortMonthLabel.format(date),
         revenue: 0,
         count: 0,
@@ -2314,6 +2581,7 @@ const BusinessManager = () => {
     const totals = new Map<string, { count: number; revenue: number }>()
 
     events.forEach((event) => {
+      if (event.recordType !== 'event') return
       if (!hasSchedule(event)) return
       if (yearFilter !== 'All' && getEventYear(event) !== yearFilter) return
       if (isCancelled(event.status)) return
@@ -2334,6 +2602,7 @@ const BusinessManager = () => {
     const totals = new Map<string, { count: number; revenue: number }>()
 
     events.forEach((event) => {
+      if (event.recordType !== 'event') return
       if (!hasSchedule(event)) return
       if (yearFilter !== 'All' && getEventYear(event) !== yearFilter) return
       if (isCancelled(event.status)) return
@@ -2536,13 +2805,19 @@ const topLocations = useMemo(() => {
     setEditingEvent(null)
     setNewEventDate('')
     setDialogInitialTab('details')
-    setDialogOpen(true)
+    setCreateTypeDialogOpen(true)
   }
 
   const openCreateDialogForDate = (date: Date) => {
     setEditingEvent(null)
     setNewEventDate(getDateKey(date))
     setDialogInitialTab('details')
+    setCreateTypeDialogOpen(true)
+  }
+
+  const chooseNewRecordType = (recordType: EventRecord['recordType']) => {
+    setNewRecordType(recordType)
+    setCreateTypeDialogOpen(false)
     setDialogOpen(true)
   }
 
@@ -2561,6 +2836,7 @@ const topLocations = useMemo(() => {
       await deleteEventFromApi(eventId)
       setConfirmDeleteEvent(null)
       setCalendarEventDetails((current) => (current?.id === eventId ? null : current))
+      setPage(0)
       setEventsRevision((current) => current + 1)
       setFacetsRevision((current) => current + 1)
     } catch (error) {
@@ -2581,6 +2857,7 @@ const topLocations = useMemo(() => {
     try {
       const updated: EventRecord = { ...event, status: 'Completed', pipelineStage: 'Completed' }
       await saveEventToApi(updated, event.id)
+      setPage(0)
       setEventsRevision((current) => current + 1)
       setFacetsRevision((current) => current + 1)
     } catch (error) {
@@ -2604,13 +2881,17 @@ const topLocations = useMemo(() => {
   }
 
   const handleSaveEvent = async (values: EventFormValues, expenses: EventExpense[], repeatWeekly: boolean) => {
+    const agreedAmount = parseAmountInput(values.agreedAmount)
+    const amountPaid = parseAmountInput(values.amountPaid)
+    const status = statusForPayment(values.status, amountPaid, agreedAmount)
     const nextEvent: EventRecord = {
       ...values,
       id: editingEvent?.id ?? `evt-${Date.now()}`,
       createdAt: editingEvent?.createdAt ?? '',
-      agreedAmount: parseAmountInput(values.agreedAmount),
-      amountPaid: parseAmountInput(values.amountPaid),
-      pipelineStage: inferPipelineStage(values.status),
+      agreedAmount,
+      amountPaid,
+      pipelineStage: inferPipelineStage(status),
+      status,
       expenses,
       expenseCount: expenses.length,
       expenseTotal: expenses.reduce((total, expense) => total + expense.amount, 0),
@@ -2624,6 +2905,7 @@ const topLocations = useMemo(() => {
       await saveEventToApi(nextEvent, editingEvent?.id, repeatWeekly)
       setDialogOpen(false)
       setEditingEvent(null)
+      setPage(0)
       setEventsRevision((current) => current + 1)
       setFacetsRevision((current) => current + 1)
     } catch (error) {
@@ -2667,6 +2949,14 @@ const topLocations = useMemo(() => {
   const completedIncomeExpenses = getExpenses(incomeBreakdownEvents)
   const completedIncomeNet = completedIncomeGross - completedIncomeExpenses
   const currentMonthKey = getCurrentMonthKey()
+  const currentMonthName = formatMonthName(currentMonthKey)
+  const completedIncomeYear = yearFilter === 'All' ? getCurrentYear() : yearFilter
+  const completedIncomeLabel = completedIncomeYear === getCurrentYear()
+    ? `Completed income this year (${completedIncomeYear})`
+    : `Completed income in ${completedIncomeYear}`
+  const totalExpensesLabel = completedIncomeYear === getCurrentYear()
+    ? `Total expenses this year (${completedIncomeYear})`
+    : `Total expenses in ${completedIncomeYear}`
   const currentMonthCompletedEvents = currentMonthIncomeEvents
   const currentMonthGross = getGross(currentMonthCompletedEvents)
   const currentMonthExpenses = getExpenses(currentMonthCompletedEvents)
@@ -2683,13 +2973,13 @@ const topLocations = useMemo(() => {
     selectedIncomeBreakdownGross,
   )
   const selectedIncomeBreakdownTitle =
-    incomeBreakdownMode === 'month' ? 'Earnings this month' : 'Completed event income'
+    incomeBreakdownMode === 'month'
+      ? `Earnings this ${currentMonthName}`
+      : completedIncomeLabel
   const selectedIncomeBreakdownPeriod =
     incomeBreakdownMode === 'month'
       ? formatYearMonth(currentMonthKey)
-      : yearFilter === 'All'
-        ? 'All years'
-        : yearFilter
+      : completedIncomeYear
   const averageCompletedBooking = average(completedRevenue, doneEvents.length)
   const doneRate = analyticsEvents.length
     ? Math.round((doneEvents.length / analyticsEvents.length) * 100)
@@ -2780,7 +3070,7 @@ const topLocations = useMemo(() => {
             />
             <Box>
               <Typography sx={{ display: { xs: 'none', sm: 'block' }, color: 'var(--muted)', marginTop: '0.55rem', maxWidth: 620 }}>
-                Track events, booking status, revenue, packages, and the working calendar from one API-backed operations dashboard.
+                Manage your bookings, payments, packages, and event schedule—all in one place.
               </Typography>
             </Box>
           </Box>
@@ -2930,7 +3220,7 @@ const topLocations = useMemo(() => {
             }}
           >
           <DashboardMetric
-            label='Completed event income'
+            label={completedIncomeLabel}
             value={
               incomeBreakdownLoading ? (
                 'Loading...'
@@ -2943,7 +3233,7 @@ const topLocations = useMemo(() => {
                 </Box>
               )
             }
-            detail={`Expenses ${peso.format(completedIncomeExpenses)} (${completedExpenseRate} of gross)${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
+            detail={`Expenses ${peso.format(completedIncomeExpenses)} (${completedExpenseRate} of gross) in ${completedIncomeYear}`}
             accent='#34d399'
             compact={!summaryExpanded}
             onClick={() => {
@@ -2952,20 +3242,20 @@ const topLocations = useMemo(() => {
             }}
           />
           <DashboardMetric
-            label='Earnings this month'
+            label={`Earnings this ${currentMonthName}`}
             value={
               incomeBreakdownLoading ? (
                 'Loading...'
               ) : (
                 <Box sx={{ display: 'grid', gap: 0.4 }}>
-                  <Box component='span'>Month gross {peso.format(currentMonthGross)}</Box>
+                  <Box component='span'>{currentMonthName} gross {peso.format(currentMonthGross)}</Box>
                   <Box component='span' sx={{ fontSize: { xs: 13, md: 15 }, color: 'text.secondary', fontWeight: 650 }}>
-                    Month net {peso.format(currentMonthNet)}
+                    {currentMonthName} net {peso.format(currentMonthNet)}
                   </Box>
                 </Box>
               )
             }
-            detail={`Done this month - Expenses ${peso.format(currentMonthExpenses)} (${currentMonthExpenseRate} of gross)`}
+            detail={`Done this ${currentMonthName} - Expenses ${peso.format(currentMonthExpenses)} (${currentMonthExpenseRate} of gross)`}
             accent='#f59e0b'
             compact={!summaryExpanded}
             onClick={() => {
@@ -2974,16 +3264,29 @@ const topLocations = useMemo(() => {
             }}
           />
           <DashboardMetric
-            label='Total expenses'
+            label={totalExpensesLabel}
             value={peso.format(eventSummary.totalExpenses)}
-            detail={`All recorded event expenses${yearFilter === 'All' ? '' : ` in ${yearFilter}`}`}
+            detail={`All recorded event expenses in ${completedIncomeYear}`}
             accent='#f43f5e'
             compact={!summaryExpanded}
           />
           <DashboardMetric
-            label='Top client'
-            value={eventSummary.topClient}
-            detail={eventSummary.topClientRevenue > 0 ? `${peso.format(eventSummary.topClientRevenue)} total booked` : 'No client data yet'}
+            label={`Top 3 clients (${completedIncomeYear})`}
+            value={topClients.length ? (
+              <Box sx={{ display: 'grid', gap: 0.5, minWidth: 0 }}>
+                {topClients.map((client, index) => (
+                  <Typography
+                    key={client.name.toLocaleLowerCase()}
+                    noWrap
+                    title={client.name}
+                    sx={{ fontSize: { xs: 15, md: 17 }, fontWeight: 700, lineHeight: 1.15, minWidth: 0 }}
+                  >
+                    {index + 1}. {client.name}
+                  </Typography>
+                ))}
+              </Box>
+            ) : '-'}
+            detail={topClients.length ? `Ranked by total booked value in ${completedIncomeYear}` : 'No client data yet'}
             accent='#a78bfa'
             compact={!summaryExpanded}
           />
@@ -2995,16 +3298,16 @@ const topLocations = useMemo(() => {
             compact={!summaryExpanded}
           />
           <DashboardMetric
-            label='Strongest month'
-            value={formatYearMonth(eventSummary.strongestMonth)}
-            detail={eventSummary.strongestMonthRevenue > 0 ? `${peso.format(eventSummary.strongestMonthRevenue)} in revenue` : 'No data yet'}
+            label='Strongest confirmed month'
+            value={confirmedMonths.strongest ? formatYearMonth(confirmedMonths.strongest.month) : '-'}
+            detail={confirmedMonths.strongest ? `${peso.format(confirmedMonths.strongest.revenue)} in confirmed bookings` : 'No confirmed bookings yet'}
             accent='#34d399'
             compact={!summaryExpanded}
           />
           <DashboardMetric
-            label='Weakest month'
-            value={formatYearMonth(eventSummary.weakestMonth)}
-            detail={eventSummary.weakestMonthRevenue > 0 ? `${peso.format(eventSummary.weakestMonthRevenue)} in revenue` : 'No data yet'}
+            label='Weakest confirmed month'
+            value={confirmedMonths.weakest ? formatYearMonth(confirmedMonths.weakest.month) : '-'}
+            detail={confirmedMonths.weakest ? `${peso.format(confirmedMonths.weakest.revenue)} in confirmed bookings` : 'No confirmed bookings yet'}
             accent='#fb923c'
             compact={!summaryExpanded}
           />
@@ -3201,6 +3504,7 @@ const topLocations = useMemo(() => {
               ))}
               <Box sx={{ display: { xs: 'none', sm: 'block' }, flex: 1 }} />
               <TextField
+                inputRef={searchInputRef}
                 value={query}
                 onChange={(event) => {
                   setQuery(event.target.value)
@@ -3239,7 +3543,7 @@ const topLocations = useMemo(() => {
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: 'repeat(6, minmax(130px, 1fr))' },
+                gridTemplateColumns: { xs: '1fr', md: 'repeat(7, minmax(130px, 1fr))' },
                 gap: 1,
                 padding: { xs: 1.5, md: 2 },
                 borderBottom: '1px solid var(--borderSoft)',
@@ -3263,6 +3567,21 @@ const topLocations = useMemo(() => {
                   {mobileFiltersOpen ? 'Hide filters' : 'Show filters'}
                 </Box>
               </Button>
+              <TextField
+                select
+                label='Record type'
+                value={recordTypeFilter}
+                onChange={(event) => {
+                  setRecordTypeFilter(event.target.value)
+                  setPage(0)
+                }}
+                size='small'
+                sx={{ display: { xs: mobileFiltersOpen ? 'inline-flex' : 'none', md: 'inline-flex' }, gridColumn: { xs: '1 / -1', md: 'auto' } }}
+              >
+                <MenuItem value='All'>All records</MenuItem>
+                <MenuItem value='event'>Events</MenuItem>
+                <MenuItem value='churchConsultation'>Church consultations</MenuItem>
+              </TextField>
               <TextField
                 select
                 label='Year'
@@ -3335,7 +3654,10 @@ const topLocations = useMemo(() => {
                 select
                 label='Sort'
                 value={sortField}
-                onChange={(event) => setSortField(event.target.value as SortField)}
+                onChange={(event) => {
+                  setSortField(event.target.value as SortField)
+                  setPage(0)
+                }}
                 size='small'
                 sx={{ display: { xs: mobileFiltersOpen ? 'inline-flex' : 'none', md: 'inline-flex' }, gridColumn: { xs: '1 / -1', md: 'auto' } }}
               >
@@ -3355,7 +3677,10 @@ const topLocations = useMemo(() => {
                 select
                 label='Order'
                 value={sortDirection}
-                onChange={(event) => setSortDirection(event.target.value as SortDirection)}
+                onChange={(event) => {
+                  setSortDirection(event.target.value as SortDirection)
+                  setPage(0)
+                }}
                 size='small'
                 sx={{ display: { xs: mobileFiltersOpen ? 'inline-flex' : 'none', md: 'inline-flex' }, gridColumn: { xs: '1 / -1', md: 'auto' } }}
               >
@@ -3366,6 +3691,19 @@ const topLocations = useMemo(() => {
 
             <TableContainer
               ref={eventsTableRef}
+              onScroll={(event) => {
+                const container = event.currentTarget
+                const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+                if (
+                  distanceFromBottom < 120
+                  && !eventsLoading
+                  && !loadingMoreEventsRef.current
+                  && events.length < eventsTotal
+                ) {
+                  loadingMoreEventsRef.current = true
+                  setPage((current) => current + 1)
+                }
+              }}
               sx={{
                 maxHeight: 620,
                 scrollbarWidth: 'none',
@@ -3389,9 +3727,9 @@ const topLocations = useMemo(() => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {eventsLoading ? (
+                  {eventsLoading && page === 0 ? (
                     <EventTableSkeletonRows
-                      rowCount={rowsPerPage}
+                      rowCount={EVENTS_BATCH_SIZE}
                       visibleColumns={visibleColumns}
                     />
                   ) : null}
@@ -3406,6 +3744,7 @@ const topLocations = useMemo(() => {
                     const tone = statusTone(event.status)
                     const eventIsDone = isDone(event.status)
                     const daysUntilEvent = getDaysUntilEvent(event.eventDate)
+                    const canMarkDone = !isCancelled(event.status) && daysUntilEvent != null && daysUntilEvent <= 0
                     const countdownBadge = !eventIsDone && !isCancelled(event.status) && daysUntilEvent != null
                       ? countdownBadgeDetails[daysUntilEvent]
                       : null
@@ -3438,7 +3777,7 @@ const topLocations = useMemo(() => {
                             >
                               <FiCheckCircle size={17} />
                             </IconButton>
-                          ) : (
+                          ) : canMarkDone ? (
                             <Tooltip title='Click to mark as done' placement='right' arrow>
                               <span>
                                 <IconButton
@@ -3452,18 +3791,19 @@ const topLocations = useMemo(() => {
                                     transition: 'color 150ms ease',
                                   }}
                                 >
-                                  <FiCircle size={17} />
+                                  <FiCheckSquare size={18} />
                                 </IconButton>
                               </span>
                             </Tooltip>
-                          )}
+                          ) : null}
                         </TableCell>
                         {visibleColumns.event ? (
                           <TableCell sx={{ width: 230, maxWidth: 260 }}>
                             <Stack direction='row' spacing={0.75} sx={{ minWidth: 0, alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
                               <Typography noWrap sx={{ minWidth: 0, fontSize: 13.5, fontWeight: 650, color: 'var(--text)' }}>
-                                {event.name || 'Untitled event'}
+                                {event.recordType === 'churchConsultation' ? 'Church Consultation' : event.name || 'Untitled event'}
                               </Typography>
+                              {event.recordType === 'churchConsultation' ? <Chip label='Consultation' size='small' color='secondary' sx={{ height: 20, fontSize: 10 }} /> : null}
                               {isNewlyCreatedEvent(event) ? (
                                 <Chip
                                   label='🔥 Newly added'
@@ -3502,7 +3842,7 @@ const topLocations = useMemo(() => {
                               ) : null}
                             </Stack>
                             <Typography noWrap sx={{ fontSize: 12, color: 'var(--muted)' }}>
-                              {event.notes || 'No notes'}
+                              {event.recordType === 'churchConsultation' ? event.churchName : event.notes || 'No notes'}
                             </Typography>
                           </TableCell>
                         ) : null}
@@ -3529,15 +3869,43 @@ const topLocations = useMemo(() => {
                         {visibleColumns.type ? (
                           <TableCell sx={{ width: 120, maxWidth: 130 }}>
                             <Typography noWrap sx={{ fontSize: 12.5 }}>
-                              {event.eventType || 'Unspecified'}
+                              {event.recordType === 'churchConsultation' ? event.consultationConcern || 'Church consultation' : event.eventType || 'Unspecified'}
                             </Typography>
                           </TableCell>
                         ) : null}
                         {visibleColumns.package ? (
-                          <TableCell sx={{ width: 150, maxWidth: 160 }}>
-                            <Typography noWrap sx={{ fontSize: 12.5 }}>
-                              {event.packageName || 'Unspecified'}
-                            </Typography>
+                          <TableCell sx={{ width: 210, maxWidth: 220 }}>
+                            {(() => {
+                              const label = event.recordType === 'churchConsultation' ? 'Consultation' : event.packageName || 'Unspecified'
+                              return (
+                                <Stack direction='row' spacing={0.5} sx={{ alignItems: 'center', maxWidth: 210 }}>
+                                  {getPackageBadges(label).map((badge) => {
+                                    const packageTone = badge === 'LED Wall'
+                                      ? { background: 'linear-gradient(135deg, #be123c, #e11d48)', border: '#fda4af', color: '#ffffff' }
+                                      : getPackageBadgeTone(badge)
+                                    return (
+                                      <Chip
+                                        key={badge}
+                                        label={badge}
+                                        size='small'
+                                        title={badge}
+                                        sx={{
+                                          maxWidth: badge === 'LED Wall' ? 86 : 125,
+                                          height: 25,
+                                          background: packageTone.background,
+                                          color: packageTone.color,
+                                          border: `1px solid ${packageTone.border}`,
+                                          boxShadow: badge === 'Unspecified' ? 'none' : '0 4px 12px rgba(0, 0, 0, 0.18)',
+                                          fontSize: 11.5,
+                                          fontWeight: 750,
+                                          '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', px: 1.1 },
+                                        }}
+                                      />
+                                    )
+                                  })}
+                                </Stack>
+                              )
+                            })()}
                           </TableCell>
                         ) : null}
                         {visibleColumns.amount ? (
@@ -3587,7 +3955,7 @@ const topLocations = useMemo(() => {
                           </TableCell>
                         ) : null}
                         <TableCell align='right'>
-                          <Tooltip title={copiedEventId === event.id ? 'Copied crew-safe brief' : 'Copy crew-safe brief'}>
+                          {event.recordType === 'event' ? <Tooltip title={copiedEventId === event.id ? 'Copied crew-safe brief' : 'Copy crew-safe brief'}>
                             <IconButton
                               sx={{ color: copiedEventId === event.id ? '#22c55e' : 'var(--muted)' }}
                               onClick={() => void handleCopyCrewBrief(event)}
@@ -3595,7 +3963,7 @@ const topLocations = useMemo(() => {
                             >
                               {copiedEventId === event.id ? <FiCheckCircle /> : <FiCopy />}
                             </IconButton>
-                          </Tooltip>
+                          </Tooltip> : null}
                           {event.expenseCount > 0 ? (
                             <Tooltip title={`${event.expenseCount} expense${event.expenseCount === 1 ? '' : 's'} · ${peso.format(event.expenseTotal)}`}>
                               <IconButton
@@ -3622,31 +3990,31 @@ const topLocations = useMemo(() => {
                       </TableRow>
                     )
                   })}
+                  {eventsLoading && page > 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={visibleTableColumns.length + 2}
+                        align='center'
+                        sx={{ py: 2.5, color: 'text.secondary', borderColor: 'var(--borderSoft)' }}
+                      >
+                        Loading 20 more events…
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                  {!eventsLoading && events.length > 0 && events.length >= eventsTotal ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={visibleTableColumns.length + 2}
+                        align='center'
+                        sx={{ py: 2, color: 'text.secondary', borderColor: 'var(--borderSoft)', fontSize: 12.5 }}
+                      >
+                        All {eventsTotal} events loaded
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
                 </TableBody>
               </Table>
             </TableContainer>
-            <TablePagination
-              component='div'
-              count={eventsTotal}
-              page={safePage}
-              onPageChange={(_, nextPage) => setPage(nextPage)}
-              rowsPerPage={rowsPerPage}
-              onRowsPerPageChange={(event) => {
-                setRowsPerPage(Number(event.target.value))
-                setPage(0)
-              }}
-              rowsPerPageOptions={[10, 25, 50]}
-              sx={{
-                color: 'var(--muted)',
-                borderTop: '1px solid var(--borderSoft)',
-                '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
-                  fontSize: 12.5,
-                },
-                '& .MuiSvgIcon-root, & .MuiTablePagination-actions button': {
-                  color: 'var(--muted)',
-                },
-              }}
-            />
           </Box>
         ) : null}
 
@@ -3791,7 +4159,10 @@ const topLocations = useMemo(() => {
                           </Tooltip>
                         </Box>
                         <Stack spacing={0.45} sx={{ marginTop: '0.45rem' }}>
-                          {cell.events.slice(0, 3).map((event) => (
+                          {cell.events.slice(0, 3).map((event) => {
+                            const eventHasPayment = hasPayment(event)
+                            const eventIsConsultation = event.recordType === 'churchConsultation'
+                            return (
                             <Box
                               key={event.id}
                               role='button'
@@ -3807,10 +4178,17 @@ const topLocations = useMemo(() => {
                                 }
                               }}
                               sx={{
-                                borderLeft: `3px solid ${isCancelled(event.status) ? '#f43f5e' : 'var(--accent)'}`,
+                                border: eventHasPayment
+                                  ? '1px solid color-mix(in srgb, #22c55e 65%, var(--borderSoft))'
+                                  : '1px solid transparent',
+                                borderLeft: `3px solid ${isCancelled(event.status) ? '#f43f5e' : eventHasPayment ? '#22c55e' : eventIsConsultation ? '#a78bfa' : 'var(--accent)'}`,
                                 background: isCancelled(event.status)
                                   ? 'color-mix(in srgb, #f43f5e 12%, var(--panel))'
-                                  : 'color-mix(in srgb, var(--accent) 12%, var(--panel))',
+                                  : eventHasPayment
+                                    ? 'color-mix(in srgb, #22c55e 20%, var(--panel))'
+                                  : eventIsConsultation
+                                    ? 'color-mix(in srgb, #a78bfa 18%, var(--panel))'
+                                    : 'color-mix(in srgb, var(--accent) 12%, var(--panel))',
                                 color: 'var(--text)',
                                 padding: '0.42rem 0.55rem',
                                 borderRadius: '6px',
@@ -3821,15 +4199,41 @@ const topLocations = useMemo(() => {
                                   transform: 'translateY(-1px)',
                                   background: isCancelled(event.status)
                                     ? 'color-mix(in srgb, #f43f5e 18%, var(--panel))'
-                                    : 'color-mix(in srgb, var(--accent) 18%, var(--panel))',
+                                    : eventHasPayment
+                                      ? 'color-mix(in srgb, #22c55e 28%, var(--panel))'
+                                    : eventIsConsultation
+                                      ? 'color-mix(in srgb, #a78bfa 25%, var(--panel))'
+                                      : 'color-mix(in srgb, var(--accent) 18%, var(--panel))',
                                 },
                               }}
                             >
-                              <Typography noWrap sx={{ fontSize: 11.5, fontWeight: 600 }}>
-                                {event.name}
-                              </Typography>
+                              <Stack direction='row' spacing={0.5} sx={{ alignItems: 'center', minWidth: 0 }}>
+                                <Typography noWrap sx={{ fontSize: 11.5, fontWeight: eventHasPayment ? 700 : 600, flex: 1, minWidth: 0 }}>
+                                  {eventIsConsultation ? `Consultation · ${event.churchName}` : event.name}
+                                </Typography>
+                                {eventHasPayment ? (
+                                  <Box
+                                    component='span'
+                                    sx={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                      flexShrink: 0,
+                                      color: '#dcfce7',
+                                      background: '#15803d',
+                                      borderRadius: '999px',
+                                      padding: '2px 5px',
+                                      fontSize: 8,
+                                      fontWeight: 800,
+                                      letterSpacing: '0.05em',
+                                    }}
+                                  >
+                                    <FiCheckCircle size={9} /> BOOKED
+                                  </Box>
+                                ) : null}
+                              </Stack>
                             </Box>
-                          ))}
+                          )})}
                           {cell.events.length > 3 ? (
                             <Typography sx={{ fontSize: 11, color: 'var(--muted)', fontWeight: 560 }}>
                               +{cell.events.length - 3} more
@@ -3953,6 +4357,8 @@ const topLocations = useMemo(() => {
                     helper={`${value.count} events | avg ${peso.format(average(value.revenue, value.count))}`}
                     percentage={(value.revenue / maxClientRevenue) * 100}
                     color='linear-gradient(90deg, #a78bfa, #38bdf8)'
+                    breakdownEvents={activeEvents.filter((event) => (event.clientName || 'No client') === client)}
+                    onOpenBreakdown={() => setAnalyticsBreakdown({ title: `Events for ${client}`, events: activeEvents.filter((event) => (event.clientName || 'No client') === client) })}
                   />
                 ))}
                 {clientRevenue.length === 0 ? (
@@ -3975,6 +4381,8 @@ const topLocations = useMemo(() => {
                     helper={`${value.count} active events | avg ${peso.format(average(value.revenue, value.count))}`}
                     percentage={(value.revenue / maxYearlyRevenue) * 100}
                     color='linear-gradient(90deg, var(--accent3), var(--accent))'
+                    breakdownEvents={activeEvents.filter((event) => getEventYear(event) === year)}
+                    onOpenBreakdown={() => setAnalyticsBreakdown({ title: `Active events in ${year}`, events: activeEvents.filter((event) => getEventYear(event) === year) })}
                   />
                 ))}
               </Stack>
@@ -4000,7 +4408,38 @@ const topLocations = useMemo(() => {
             >
               <Box sx={{ display: 'flex', alignItems: 'end', gap: '0.7rem', height: 280, marginTop: '1.4rem' }}>
                 {monthlyRevenue.map((item) => (
-                  <Box key={item.label} sx={{ flex: 1, minWidth: 0 }}>
+                  <Tooltip
+                    key={item.label}
+                    arrow
+                    placement='top'
+                    title={(
+                      <Box sx={{ width: 'min(320px, 76vw)', p: 0.75 }}>
+                        <Typography sx={{ fontWeight: 800 }}>{item.label} events</Typography>
+                        <Stack spacing={0.5} sx={{ mt: 0.75 }}>
+                          {activeEvents.filter((event) => getMonthKey(event.eventDate) === item.month).slice(0, 5).map((event) => (
+                            <Box key={event.id} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, p: 0.7, borderRadius: '6px', bgcolor: 'rgba(255,255,255,0.08)' }}>
+                              <Typography noWrap sx={{ fontSize: 11.5, maxWidth: 200 }}>{event.name}</Typography>
+                              <Typography sx={{ fontSize: 11.5, color: '#5eead4', whiteSpace: 'nowrap' }}>{peso.format(event.agreedAmount ?? 0)}</Typography>
+                            </Box>
+                          ))}
+                        </Stack>
+                        <Typography sx={{ fontSize: 10.5, mt: 0.75, color: 'rgba(255,255,255,0.7)' }}>Click for all matching events</Typography>
+                      </Box>
+                    )}
+                    slotProps={{ tooltip: { sx: { bgcolor: '#111827', border: '1px solid #334155', maxWidth: 'none' } }, arrow: { sx: { color: '#111827' } } }}
+                  >
+                  <Box
+                    role='button'
+                    tabIndex={0}
+                    onClick={() => setAnalyticsBreakdown({ title: `${item.label} revenue events`, events: activeEvents.filter((event) => getMonthKey(event.eventDate) === item.month) })}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        setAnalyticsBreakdown({ title: `${item.label} revenue events`, events: activeEvents.filter((record) => getMonthKey(record.eventDate) === item.month) })
+                      }
+                    }}
+                    sx={{ flex: 1, minWidth: 0, cursor: 'pointer', borderRadius: '8px', '&:hover, &:focus-visible': { transform: 'translateY(-3px)', outline: '2px solid var(--accent)', outlineOffset: 2 } }}
+                  >
                     <Box
                       sx={{
                         height: `${Math.max((item.revenue / maxMonthlyRevenue) * 220, 8)}px`,
@@ -4016,6 +4455,7 @@ const topLocations = useMemo(() => {
                       {peso.format(item.revenue)}
                     </Typography>
                   </Box>
+                  </Tooltip>
                 ))}
               </Box>
             </AnalyticsCard>
@@ -4084,6 +4524,8 @@ const topLocations = useMemo(() => {
                           ? 'linear-gradient(90deg, #34d399, var(--accent))'
                           : 'linear-gradient(90deg, var(--accent3), var(--accent))'
                     }
+                    breakdownEvents={analyticsEvents.filter((event) => (event.status || 'No status') === status)}
+                    onOpenBreakdown={() => setAnalyticsBreakdown({ title: `${status} events`, events: analyticsEvents.filter((event) => (event.status || 'No status') === status) })}
                   />
                 ))}
               </Stack>
@@ -4109,6 +4551,8 @@ const topLocations = useMemo(() => {
                           ? 'linear-gradient(90deg, #34d399, var(--accent))'
                           : 'linear-gradient(90deg, var(--accent3), var(--accent))'
                     }
+                    breakdownEvents={analyticsEvents.filter((event) => (eventStatuses.includes(event.status) ? event.status : inferPipelineStage(event.status)) === stage)}
+                    onOpenBreakdown={() => setAnalyticsBreakdown({ title: `${stage} workflow events`, events: analyticsEvents.filter((event) => (eventStatuses.includes(event.status) ? event.status : inferPipelineStage(event.status)) === stage) })}
                   />
                 ))}
               </Stack>
@@ -4128,6 +4572,8 @@ const topLocations = useMemo(() => {
                     helper={`${value.count} events | avg ${peso.format(average(value.revenue, value.count))}`}
                     percentage={(value.revenue / maxEventTypeRevenue) * 100}
                     color='linear-gradient(90deg, var(--accent), var(--accent3))'
+                    breakdownEvents={activeEvents.filter((event) => event.recordType === 'event' && (event.eventType || 'Unspecified') === eventType)}
+                    onOpenBreakdown={() => setAnalyticsBreakdown({ title: `${eventType} events`, events: activeEvents.filter((event) => event.recordType === 'event' && (event.eventType || 'Unspecified') === eventType) })}
                   />
                 ))}
               </Stack>
@@ -4146,6 +4592,8 @@ const topLocations = useMemo(() => {
                     value={peso.format(value.revenue)}
                     helper={`${value.count} events | avg ${peso.format(average(value.revenue, value.count))}`}
                     percentage={(value.revenue / maxPackageRevenue) * 100}
+                    breakdownEvents={activeEvents.filter((event) => event.recordType === 'event' && (event.packageName || 'Unspecified') === packageName)}
+                    onOpenBreakdown={() => setAnalyticsBreakdown({ title: `${packageName} package events`, events: activeEvents.filter((event) => event.recordType === 'event' && (event.packageName || 'Unspecified') === packageName) })}
                   />
                 ))}
               </Stack>
@@ -4164,6 +4612,8 @@ const topLocations = useMemo(() => {
                     value={`${count} events`}
                     percentage={(count / maxLocationCount) * 100}
                     color='linear-gradient(90deg, #38bdf8, var(--accent3))'
+                    breakdownEvents={activeEvents.filter((event) => (event.location || 'No location') === location)}
+                    onOpenBreakdown={() => setAnalyticsBreakdown({ title: `Events at ${location}`, events: activeEvents.filter((event) => (event.location || 'No location') === location) })}
                   />
                 ))}
               </Stack>
@@ -4183,6 +4633,8 @@ const topLocations = useMemo(() => {
                     helper={`${value.count} events | avg ${peso.format(average(value.revenue, value.count))}`}
                     percentage={(value.revenue / maxSourceRevenue) * 100}
                     color='linear-gradient(90deg, #38bdf8, var(--accent))'
+                    breakdownEvents={activeEvents.filter((event) => (event.bookingSource || 'Unknown') === source)}
+                    onOpenBreakdown={() => setAnalyticsBreakdown({ title: `${source} bookings`, events: activeEvents.filter((event) => (event.bookingSource || 'Unknown') === source) })}
                   />
                 ))}
               </Stack>
@@ -4265,16 +4717,63 @@ const topLocations = useMemo(() => {
                     <Typography sx={{ color: 'var(--muted)', mt: 2 }}>No crew salary records for this period.</Typography>
                   ) : (
                     <Stack spacing={1.1} sx={{ mt: 2 }}>
-                      {crewPayroll.crews.map((crew) => (
-                        <DataBar
-                          key={crew.crewId}
-                          label={crew.crewName}
-                          value={peso.format(crew.totalIncome)}
-                          helper={`${crew.paymentCount} payments across ${crew.eventCount} events`}
-                          percentage={(crew.totalIncome / Math.max(...crewPayroll.crews.map((item) => item.totalIncome), 1)) * 100}
-                          color='linear-gradient(90deg, var(--accent3), var(--accent))'
-                        />
-                      ))}
+                      {crewPayroll.crews.map((crew) => {
+                        const crewEvents = getCrewEventBreakdown(crewPayroll.records, crew.crewId)
+                        return (
+                          <Tooltip
+                            key={crew.crewId}
+                            arrow
+                            placement='top-start'
+                            enterDelay={180}
+                            title={(
+                              <Box sx={{ width: 'min(340px, 78vw)', p: 0.75 }}>
+                                <Stack direction='row' sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 1 }}>
+                                  <Box>
+                                    <Typography sx={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{crew.crewName}'s events</Typography>
+                                    <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Click for the full breakdown</Typography>
+                                  </Box>
+                                  <Chip label={peso.format(crew.totalIncome)} size='small' sx={{ bgcolor: '#14b8a6', color: '#fff', fontWeight: 800 }} />
+                                </Stack>
+                                <Stack spacing={0.65}>
+                                  {crewEvents.slice(0, 5).map((event) => (
+                                    <Box key={event.eventId} sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 1, p: 0.8, borderRadius: '7px', bgcolor: 'rgba(255,255,255,0.08)' }}>
+                                      <Box sx={{ minWidth: 0 }}>
+                                        <Typography noWrap sx={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>{event.eventName}</Typography>
+                                        <Typography sx={{ fontSize: 10.5, color: 'rgba(255,255,255,0.65)' }}>{formatTableDate(event.eventDate)}</Typography>
+                                      </Box>
+                                      <Typography sx={{ fontSize: 12, fontWeight: 750, color: '#5eead4', alignSelf: 'center' }}>{peso.format(event.amount)}</Typography>
+                                    </Box>
+                                  ))}
+                                  {crewEvents.length > 5 ? <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', textAlign: 'center' }}>+{crewEvents.length - 5} more events</Typography> : null}
+                                </Stack>
+                              </Box>
+                            )}
+                            slotProps={{ tooltip: { sx: { bgcolor: '#111827', border: '1px solid #334155', boxShadow: '0 18px 48px rgba(0,0,0,0.45)', maxWidth: 'none' } }, arrow: { sx: { color: '#111827' } } }}
+                          >
+                            <Box
+                              role='button'
+                              tabIndex={0}
+                              aria-label={`View events for ${crew.crewName}`}
+                              onClick={() => setSelectedCrewId(crew.crewId)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault()
+                                  setSelectedCrewId(crew.crewId)
+                                }
+                              }}
+                              sx={{ p: 0.75, m: -0.75, borderRadius: '8px', cursor: 'pointer', transition: 'background 140ms ease, transform 140ms ease', '&:hover, &:focus-visible': { bgcolor: 'color-mix(in srgb, var(--accent) 8%, transparent)', transform: 'translateX(2px)', outline: 'none' } }}
+                            >
+                              <DataBar
+                                label={crew.crewName}
+                                value={peso.format(crew.totalIncome)}
+                                helper={`${crew.paymentCount} payments across ${crew.eventCount} events · Tap for details`}
+                                percentage={(crew.totalIncome / Math.max(...crewPayroll.crews.map((item) => item.totalIncome), 1)) * 100}
+                                color='linear-gradient(90deg, var(--accent3), var(--accent))'
+                              />
+                            </Box>
+                          </Tooltip>
+                        )
+                      })}
                     </Stack>
                   )}
                 </AnalyticsCard>
@@ -4430,6 +4929,58 @@ const topLocations = useMemo(() => {
         ) : null}
       </Box>
 
+      <Dialog open={Boolean(analyticsBreakdown)} onClose={() => setAnalyticsBreakdown(null)} fullWidth maxWidth='sm'>
+        {analyticsBreakdown ? (
+          <>
+            <DialogTitle sx={{ pb: 1 }}>
+              <Typography sx={{ fontSize: 21, fontWeight: 800 }}>{analyticsBreakdown.title}</Typography>
+              <Typography sx={{ mt: 0.35, fontSize: 13, color: 'text.secondary' }}>{analyticsBreakdown.events.length} matching events</Typography>
+            </DialogTitle>
+            <DialogContent>
+              <Stack spacing={1} sx={{ pt: 1 }}>
+                {analyticsBreakdown.events.map((event) => (
+                  <Box key={event.id} sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 1.5, alignItems: 'center', p: 1.4, borderRadius: '8px', bgcolor: 'var(--panelSoft)', border: '1px solid var(--borderSoft)' }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography noWrap title={event.name} sx={{ fontWeight: 700 }}>{event.name}</Typography>
+                      <Typography sx={{ mt: 0.2, fontSize: 12, color: 'text.secondary' }}>{formatTableDate(event.eventDate)} · {event.clientName || 'No client'}</Typography>
+                    </Box>
+                    <Chip label={peso.format(event.agreedAmount ?? 0)} size='small' sx={{ bgcolor: 'color-mix(in srgb, var(--accent) 18%, var(--panel))', color: 'var(--text)', border: '1px solid var(--accent)', fontWeight: 750 }} />
+                  </Box>
+                ))}
+              </Stack>
+            </DialogContent>
+            <DialogActions><Button onClick={() => setAnalyticsBreakdown(null)}>Close</Button></DialogActions>
+          </>
+        ) : null}
+      </Dialog>
+
+      <Dialog open={Boolean(selectedCrew)} onClose={() => setSelectedCrewId('')} fullWidth maxWidth='sm'>
+        {selectedCrew ? (
+          <>
+            <DialogTitle sx={{ pb: 1 }}>
+              <Typography sx={{ fontSize: 21, fontWeight: 800 }}>{selectedCrew.crewName}'s event earnings</Typography>
+              <Typography sx={{ mt: 0.35, fontSize: 13, color: 'text.secondary' }}>
+                {selectedCrew.eventCount} events · {selectedCrew.paymentCount} payments · {peso.format(selectedCrew.totalIncome)} total
+              </Typography>
+            </DialogTitle>
+            <DialogContent>
+              <Stack spacing={1} sx={{ pt: 1 }}>
+                {selectedCrewEvents.map((event) => (
+                  <Box key={event.eventId} sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 1.5, alignItems: 'center', p: 1.4, borderRadius: '8px', bgcolor: 'var(--panelSoft)', border: '1px solid var(--borderSoft)' }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography noWrap title={event.eventName} sx={{ fontWeight: 700 }}>{event.eventName}</Typography>
+                      <Typography sx={{ mt: 0.2, fontSize: 12, color: 'text.secondary' }}>{formatTableDate(event.eventDate)}</Typography>
+                    </Box>
+                    <Chip label={peso.format(event.amount)} size='small' sx={{ bgcolor: 'color-mix(in srgb, var(--accent) 18%, var(--panel))', color: 'var(--text)', border: '1px solid var(--accent)', fontWeight: 750 }} />
+                  </Box>
+                ))}
+              </Stack>
+            </DialogContent>
+            <DialogActions><Button onClick={() => setSelectedCrewId('')}>Close</Button></DialogActions>
+          </>
+        ) : null}
+      </Dialog>
+
       <Dialog
         open={Boolean(calendarEventDetails)}
         onClose={() => setCalendarEventDetails(null)}
@@ -4450,7 +5001,7 @@ const topLocations = useMemo(() => {
           <>
             <DialogTitle sx={{ pb: 1 }}>
               <Typography sx={{ fontSize: 22, fontWeight: 700, color: theme.text }}>
-                {calendarEventDetails.name || 'Untitled event'}
+                {calendarEventDetails.recordType === 'churchConsultation' ? calendarEventDetails.churchName : calendarEventDetails.name || 'Untitled event'}
               </Typography>
               <Stack direction='row' spacing={1} sx={{ mt: 1, flexWrap: 'wrap', rowGap: 1 }}>
                 <Chip
@@ -4473,7 +5024,20 @@ const topLocations = useMemo(() => {
                   pt: 1,
                 }}
               >
-                {[
+                {(calendarEventDetails.recordType === 'churchConsultation' ? [
+                  ['Date', formatEventDateRange(calendarEventDetails)],
+                  ['Start time', formatIngressTime(calendarEventDetails.eventTime)],
+                  ['Church', calendarEventDetails.churchName || 'No church'],
+                  ['Contact', calendarEventDetails.contactName || 'No contact'],
+                  ['Phone', calendarEventDetails.contactPhone || '-'],
+                  ['Email', calendarEventDetails.contactEmail || '-'],
+                  ['Location', calendarEventDetails.location || 'No location'],
+                  ['Concern', calendarEventDetails.consultationConcern || 'Not specified'],
+                  ['Assigned to', calendarEventDetails.assignedTo || 'Legato Team'],
+                  ['Consultation fee', calendarEventDetails.agreedAmount == null ? '-' : peso.format(calendarEventDetails.agreedAmount)],
+                  ['Amount paid', calendarEventDetails.amountPaid == null ? '-' : peso.format(calendarEventDetails.amountPaid)],
+                  ['Balance', calendarEventDetails.agreedAmount == null ? '-' : peso.format(getBalance(calendarEventDetails))],
+                ] : [
                   ['Date', formatEventDateRange(calendarEventDetails)],
                   ['Ingress time', formatIngressTime(calendarEventDetails.eventTime)],
                   ['Client', calendarEventDetails.clientName || 'No client'],
@@ -4484,7 +5048,7 @@ const topLocations = useMemo(() => {
                   ['Amount paid', calendarEventDetails.amountPaid == null ? '-' : peso.format(calendarEventDetails.amountPaid)],
                   ['Balance', calendarEventDetails.agreedAmount == null ? '-' : peso.format(getBalance(calendarEventDetails))],
                   ['Booking source', calendarEventDetails.bookingSource || 'Unknown'],
-                ].map(([label, value]) => (
+                ]).map(([label, value]) => (
                   <Box
                     key={label}
                     sx={{
@@ -4685,6 +5249,25 @@ const topLocations = useMemo(() => {
         </DialogActions>
       </Dialog>
 
+      <Dialog open={createTypeDialogOpen} onClose={() => setCreateTypeDialogOpen(false)} maxWidth='sm' fullWidth>
+        <DialogTitle sx={{ fontWeight: 750 }}>What would you like to add?</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, pt: 1 }}>
+            <Card role='button' tabIndex={0} onClick={() => chooseNewRecordType('event')} onKeyDown={(event) => { if (event.key === 'Enter') chooseNewRecordType('event') }} sx={{ p: 2.5, cursor: 'pointer', border: `1px solid ${theme.border}`, '&:hover': { borderColor: theme.accent } }}>
+              <FiCalendar size={24} />
+              <Typography sx={{ mt: 1, fontWeight: 750 }}>Normal event</Typography>
+              <Typography sx={{ mt: 0.5, color: 'text.secondary', fontSize: 13 }}>Create a production booking with package, crew, and event details.</Typography>
+            </Card>
+            <Card role='button' tabIndex={0} onClick={() => chooseNewRecordType('churchConsultation')} onKeyDown={(event) => { if (event.key === 'Enter') chooseNewRecordType('churchConsultation') }} sx={{ p: 2.5, cursor: 'pointer', border: `1px solid ${theme.border}`, '&:hover': { borderColor: theme.accent } }}>
+              <FiUsers size={24} />
+              <Typography sx={{ mt: 1, fontWeight: 750 }}>Church consultation</Typography>
+              <Typography sx={{ mt: 0.5, color: 'text.secondary', fontSize: 13 }}>Schedule a church consultation and track its contact, fee, and payment.</Typography>
+            </Card>
+          </Box>
+        </DialogContent>
+        <DialogActions><Button onClick={() => setCreateTypeDialogOpen(false)}>Cancel</Button></DialogActions>
+      </Dialog>
+
       {dialogOpen ? (
         <EventDialog
           key={editingEvent?.id ?? `new-event-${newEventDate || 'today'}`}
@@ -4694,6 +5277,7 @@ const topLocations = useMemo(() => {
           initialDate={newEventDate || undefined}
           initialTab={dialogInitialTab}
           packageOptions={eventFacets.packages}
+          recordType={editingEvent?.recordType ?? newRecordType}
           savingEvent={savingEvent}
           theme={theme}
           onClose={() => setDialogOpen(false)}
