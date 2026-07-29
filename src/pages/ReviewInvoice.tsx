@@ -16,13 +16,14 @@ import {
   DialogTitle,
   Divider,
   InputAdornment,
+  MenuItem,
   TextField,
   Typography,
 } from '@mui/material'
-import { Link as RouterLink, Navigate, useParams } from 'react-router'
+import { Link as RouterLink, Navigate, useParams, useSearchParams } from 'react-router'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
-import { FiDownload, FiEdit3, FiLayout, FiTrash2 } from 'react-icons/fi'
+import { FiArrowLeft, FiDownload, FiEdit3, FiTrash2 } from 'react-icons/fi'
 import { DEFAULT_BACKGROUND_COLOR } from '../mainStyleConst'
 import legatoLogo from '../assets/legato-black.png'
 import {
@@ -53,6 +54,25 @@ const packageSectionIds: string[] = [
   SECTION_IDS.ADD_ONS,
 ]
 const DEFAULT_PREPARED_BY = 'Philson S. Josol'
+type DocumentType = 'Invoice' | 'Quotation' | 'Acknowledgement Receipt'
+const documentTypes: DocumentType[] = [
+  'Invoice',
+  'Quotation',
+  'Acknowledgement Receipt',
+]
+type AcknowledgementService =
+  | 'Sounds and Lights'
+  | 'Sound System'
+  | 'LED Wall with Sounds and Lights'
+  | 'Church Consultation'
+const acknowledgementServices: AcknowledgementService[] = [
+  'Sounds and Lights',
+  'Sound System',
+  'LED Wall with Sounds and Lights',
+  'Church Consultation',
+]
+const isAcknowledgementService = (value: string | null): value is AcknowledgementService =>
+  acknowledgementServices.includes(value as AcknowledgementService)
 const signatureAssetModules = import.meta.glob(
   '../assets/philson-signature.png',
   {
@@ -294,10 +314,13 @@ const DocumentHeaderBlock = ({
   documentType,
   edit,
 }: Pick<DocumentContentProps, 'meta'> & {
-  documentType: 'Invoice' | 'Quotation'
+  documentType: DocumentType
   edit: EditCallbacks
-}) => (
-  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+}) => {
+  const isAcknowledgementReceipt = documentType === 'Acknowledgement Receipt'
+
+  return (
+  <Box sx={{ display: 'flex', flexDirection: 'column', gap: isAcknowledgementReceipt ? 5 : 3 }}>
     <Box
       sx={{
         display: 'flex',
@@ -357,22 +380,24 @@ const DocumentHeaderBlock = ({
       >
         {documentType}
       </Typography>
-      <Typography
-        sx={{
-          fontSize: 15,
-          marginTop: '0.35rem',
-          letterSpacing: '0.06em',
-          color: '#b3afb1',
-          fontWeight: 700,
-        }}
-      >
-        {documentType.toUpperCase()} #{' '}
-        <EditableText
-          value={meta.invoiceNumber}
-          onChange={(value) => edit.onMetaChange('invoiceNumber', value)}
-          editMode={edit.editMode}
-        />
-      </Typography>
+      {!isAcknowledgementReceipt ? (
+        <Typography
+          sx={{
+            fontSize: 15,
+            marginTop: '0.35rem',
+            letterSpacing: '0.06em',
+            color: '#b3afb1',
+            fontWeight: 700,
+          }}
+        >
+          {documentType.toUpperCase()} #{' '}
+          <EditableText
+            value={meta.invoiceNumber}
+            onChange={(value) => edit.onMetaChange('invoiceNumber', value)}
+            editMode={edit.editMode}
+          />
+        </Typography>
+      ) : null}
     </Box>
 
     <Box
@@ -392,20 +417,22 @@ const DocumentHeaderBlock = ({
             editMode={edit.editMode}
           />
         </Typography>
-        <Typography sx={{ fontSize: 14, marginTop: '2rem' }}>
-          Event Venue:{' '}
-          <Box component='span' sx={{ fontWeight: 500 }}>
-            <EditableText
-              value={meta.eventVenue}
-              onChange={(value) => edit.onMetaChange('eventVenue', value)}
-              editMode={edit.editMode}
-            />
-          </Box>
-        </Typography>
+        {!isAcknowledgementReceipt ? (
+          <Typography sx={{ fontSize: 14, marginTop: '2rem' }}>
+            Event Venue:{' '}
+            <Box component='span' sx={{ fontWeight: 500 }}>
+              <EditableText
+                value={meta.eventVenue}
+                onChange={(value) => edit.onMetaChange('eventVenue', value)}
+                editMode={edit.editMode}
+              />
+            </Box>
+          </Typography>
+        ) : null}
       </Box>
       <Box sx={{ minWidth: '12rem' }}>
         <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#47506a' }}>
-          PREPARED DATE
+          {isAcknowledgementReceipt ? 'DATE' : 'PREPARED DATE'}
         </Typography>
         <Typography sx={{ fontSize: 14, marginBottom: '0.8rem' }}>
           <EditableText
@@ -414,22 +441,27 @@ const DocumentHeaderBlock = ({
             editMode={edit.editMode}
           />
         </Typography>
-        <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#47506a' }}>
-          EVENT DATE
-        </Typography>
-        <Typography sx={{ fontSize: 14 }}>
-          <EditableText
-            value={meta.eventDate}
-            onChange={(value) => edit.onMetaChange('eventDate', value)}
-            editMode={edit.editMode}
-          />
-        </Typography>
+        {!isAcknowledgementReceipt ? (
+          <>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#47506a' }}>
+              EVENT DATE
+            </Typography>
+            <Typography sx={{ fontSize: 14 }}>
+              <EditableText
+                value={meta.eventDate}
+                onChange={(value) => edit.onMetaChange('eventDate', value)}
+                editMode={edit.editMode}
+              />
+            </Typography>
+          </>
+        ) : null}
       </Box>
     </Box>
 
     <Divider />
   </Box>
-)
+  )
+}
 
 const TableHeader = () => (
   <Box
@@ -693,10 +725,17 @@ const buildDocumentBlocks = ({
   tableBlocks,
   edit,
 }: Pick<DocumentContentProps, 'meta'> & {
-  documentType: 'Invoice' | 'Quotation'
+  documentType: DocumentType
   tableBlocks: DocumentBlock[]
   edit: EditCallbacks
 }): DocumentBlock[] => {
+  const documentTableBlocks = documentType === 'Acknowledgement Receipt'
+    ? tableBlocks.map((block, index) => (
+        index === tableBlocks.length - 1
+          ? { ...block, pageBreakAfter: false, gapAfter: 24 }
+          : block
+      ))
+    : tableBlocks
   const termsBlocks: DocumentBlock[] = [
     {
       id: 'terms-heading',
@@ -723,13 +762,15 @@ const buildDocumentBlocks = ({
       ),
       gapAfter: 0,
     },
-    ...tableBlocks,
-    {
-      id: 'terms-section',
-      node: <TermsSectionBlocks blocks={termsBlocks} />,
-      gapAfter: 24,
-      paginationBuffer: 24,
-    },
+    ...documentTableBlocks,
+    ...(documentType === 'Acknowledgement Receipt'
+      ? []
+      : [{
+          id: 'terms-section',
+          node: <TermsSectionBlocks blocks={termsBlocks} />,
+          gapAfter: 24,
+          paginationBuffer: 24,
+        }]),
     {
       id: 'signature',
       node: <SignatureBlock />,
@@ -741,6 +782,7 @@ const buildDocumentBlocks = ({
 
 const ReviewInvoice = () => {
   const { packageId } = useParams()
+  const [searchParams] = useSearchParams()
   const template = packageId ? getPackageTemplate(packageId) : undefined
   const isCustomPackage = packageId === CUSTOM_PACKAGE_ID
   const { activePackageId, formValues, sections, selectPackageTemplate } =
@@ -752,7 +794,15 @@ const ReviewInvoice = () => {
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [exportFilename, setExportFilename] = useState('')
   const [editMode, setEditMode] = useState(true)
-  const [documentType, setDocumentType] = useState<'Invoice' | 'Quotation'>('Invoice')
+  const [documentType, setDocumentType] = useState<DocumentType>(() => (
+    searchParams.get('documentType') === 'acknowledgement-receipt'
+      ? 'Acknowledgement Receipt'
+      : 'Invoice'
+  ))
+  const acknowledgementService = (() => {
+    const service = searchParams.get('service')
+    return isAcknowledgementService(service) ? service : 'Sounds and Lights'
+  })()
   const [measuredBlockHeights, setMeasuredBlockHeights] = useState<
     Record<string, number>
   >({})
@@ -901,6 +951,27 @@ const ReviewInvoice = () => {
   )
   const [tableRows, setTableRows] = useState<TableRow[]>(generatedTableRows)
   const documentDirtyRef = useRef(false)
+  const documentTableRows = useMemo<TableRow[]>(() => {
+    if (documentType !== 'Acknowledgement Receipt') return tableRows
+
+    const total = tableRows.find((row) => row.kind === 'grand-total')?.total
+      .replace(/^TOTAL:\s*/i, '') ?? `P${formatCurrency(String(grandTotal))}`
+
+    return [
+      {
+        id: 'acknowledgement-service',
+        kind: 'summary',
+        no: '01',
+        description: acknowledgementService,
+        total,
+      },
+      {
+        id: 'grand-total',
+        kind: 'grand-total',
+        total: `TOTAL: ${total}`,
+      },
+    ]
+  }, [acknowledgementService, documentType, grandTotal, tableRows])
 
   useEffect(() => {
     if (documentDirtyRef.current) return
@@ -933,7 +1004,7 @@ const ReviewInvoice = () => {
 
   useLayoutEffect(() => {
     const nextHeights = Object.fromEntries(
-      tableRows.map((row) => [
+      documentTableRows.map((row) => [
         row.id,
         Math.ceil(
           measureTableRowRefs.current[row.id]?.getBoundingClientRect().height ??
@@ -955,13 +1026,13 @@ const ReviewInvoice = () => {
 
       return nextHeights
     })
-  }, [tableRows])
+  }, [documentTableRows])
 
   const paginatedTableRows = useMemo(() => {
     const tableHeaderHeight = 44
 
-    if (tableRows.some((row) => !measuredTableRowHeights[row.id])) {
-      return [tableRows]
+    if (documentTableRows.some((row) => !measuredTableRowHeights[row.id])) {
+      return [documentTableRows]
     }
 
     const headerHeight = measuredBlockHeights.header ?? 0
@@ -975,7 +1046,7 @@ const ReviewInvoice = () => {
     let currentHeight = tableHeaderHeight
     let currentPageLimit = firstPageAvailableHeight
 
-    tableRows.forEach((row) => {
+    documentTableRows.forEach((row) => {
       const rowHeight = measuredTableRowHeights[row.id]
 
       if (
@@ -998,7 +1069,7 @@ const ReviewInvoice = () => {
     }
 
     return pages
-  }, [measuredBlockHeights.header, measuredTableRowHeights, tableRows])
+  }, [documentTableRows, measuredBlockHeights.header, measuredTableRowHeights])
 
   const tableBlocks = useMemo(
     () => buildTableBlocks(paginatedTableRows, editCallbacks),
@@ -1108,7 +1179,8 @@ const ReviewInvoice = () => {
   const buildDefaultFilename = () => {
     const preparedForPart = sanitizeFilenamePart(meta.clientName, 'client')
     const exportDatePart = sanitizeFilenamePart(meta.preparedDate, 'date')
-    return `legato-sounds-and-lights-invoice-${preparedForPart}-${meta.invoiceNumber || 'draft'}-${exportDatePart}`
+    const documentTypePart = sanitizeFilenamePart(documentType, 'document')
+    return `legato-sounds-and-lights-${documentTypePart}-${preparedForPart}-${meta.invoiceNumber || 'draft'}-${exportDatePart}`
   }
 
   const handleExportClick = () => {
@@ -1180,124 +1252,135 @@ const ReviewInvoice = () => {
     >
       <Box
         sx={{
+          position: 'sticky',
+          top: 16,
+          zIndex: 20,
           display: 'flex',
           flexWrap: 'wrap',
-          justifyContent: 'center',
-          gap: '0.75rem',
-          marginBottom: '1rem',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1.25,
+          width: '100%',
+          maxWidth: 1120,
+          margin: '0 auto 1rem',
+          padding: '0.625rem',
+          border: '1px solid rgba(208, 213, 221, 0.9)',
+          borderRadius: '12px',
+          background: 'rgba(255, 255, 255, 0.94)',
+          boxShadow: '0 10px 30px rgba(16, 24, 40, 0.09)',
+          backdropFilter: 'blur(14px)',
           '@media print': {
             display: 'none',
           },
         }}
       >
-        <Button
-          variant='outlined'
-          onClick={() =>
-            setDocumentType((t) => (t === 'Invoice' ? 'Quotation' : 'Invoice'))
-          }
-        >
-          Switch to {documentType === 'Invoice' ? 'Quotation' : 'Invoice'}
-        </Button>
-        <Button
-          variant={editMode ? 'contained' : 'outlined'}
-          onClick={() => setEditMode((current) => !current)}
-          startIcon={<FiEdit3 />}
-        >
-          {editMode ? 'Finish editing' : 'Edit document'}
-        </Button>
-        <Button
-          component={RouterLink}
-          to='/invoice-templates'
-          variant='outlined'
-          aria-label='Templates'
+        <Box
           sx={{
-            minWidth: { xs: '3rem', sm: 'unset' },
-            paddingInline: { xs: '0.8rem', sm: '1rem' },
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            minWidth: 0,
+            flex: { xs: '1 1 100%', md: '0 1 auto' },
           }}
         >
-          <Box
-            component='span'
+          <Button
+            component={RouterLink}
+            to='/'
+            variant='text'
+            startIcon={<FiArrowLeft />}
             sx={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 18,
+              flexShrink: 0,
+              minHeight: 40,
+              color: '#344054',
+              fontWeight: 700,
+              textTransform: 'none',
+              borderRadius: '8px',
             }}
           >
-            <FiLayout />
-          </Box>
-          <Box
-            component='span'
-            sx={{
-              display: { xs: 'none', sm: 'inline' },
-              marginLeft: '0.5rem',
-            }}
-          >
-            Templates
-          </Box>
-        </Button>
-        <Button
-          component={RouterLink}
-          to={`/package/${packageId}`}
-          variant='outlined'
-          aria-label='Back to Edit'
+            Business tracker
+          </Button>
+          {searchParams.get('documentType') === 'acknowledgement-receipt' ? (
+            <Box
+              sx={{
+                minWidth: 0,
+                padding: '0.55rem 0.8rem',
+                borderLeft: '1px solid #e4e7ec',
+                color: '#475467',
+                fontSize: 13,
+                fontWeight: 700,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              Acknowledgement Receipt
+            </Box>
+          ) : (
+            <TextField
+              select
+              size='small'
+              label='Document type'
+              value={documentType}
+              onChange={(event) => setDocumentType(event.target.value as DocumentType)}
+              sx={{
+                width: { xs: '100%', sm: 190 },
+                '& .MuiOutlinedInput-root': { borderRadius: '8px' },
+              }}
+            >
+              {documentTypes
+                .filter((type) => type !== 'Acknowledgement Receipt')
+                .map((type) => (
+                  <MenuItem key={type} value={type}>{type}</MenuItem>
+                ))}
+            </TextField>
+          )}
+        </Box>
+        <Box
           sx={{
-            minWidth: { xs: '3rem', sm: 'unset' },
-            paddingInline: { xs: '0.8rem', sm: '1rem' },
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: { xs: 'stretch', sm: 'flex-end' },
+            gap: 0.75,
+            flex: { xs: '1 1 100%', md: '0 1 auto' },
+            '& > .MuiButton-root': {
+              minHeight: 40,
+              borderRadius: '8px',
+              textTransform: 'none',
+              whiteSpace: 'nowrap',
+            },
           }}
         >
-          <Box
-            component='span'
-            sx={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 18,
-            }}
+          <Button
+            component={RouterLink}
+            to={`/package/${packageId}${
+              searchParams.toString() ? `?${searchParams.toString()}` : ''
+            }`}
+            variant='text'
+            startIcon={<FiArrowLeft />}
+            aria-label='Back to edit'
+            sx={{ color: '#475467' }}
           >
-            <FiEdit3 />
-          </Box>
-          <Box
-            component='span'
-            sx={{
-              display: { xs: 'none', sm: 'inline' },
-              marginLeft: '0.5rem',
-            }}
+            Back to form
+          </Button>
+          <Button
+            variant='outlined'
+            onClick={() => setEditMode((current) => !current)}
+            startIcon={<FiEdit3 />}
+            sx={{ borderColor: '#d0d5dd', color: '#344054' }}
           >
-            Back to Edit
-          </Box>
-        </Button>
-        <Button
-          variant='contained'
-          onClick={handleExportClick}
-          disabled={isExporting}
-          aria-label={isExporting ? 'Exporting PDF' : 'Export as PDF'}
-          sx={{
-            minWidth: { xs: '3rem', sm: 'unset' },
-            paddingInline: { xs: '0.8rem', sm: '1rem' },
-          }}
-        >
-          <Box
-            component='span'
-            sx={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 18,
-            }}
+            {editMode ? 'Done' : 'Edit'}
+          </Button>
+          <Button
+            variant='contained'
+            startIcon={<FiDownload />}
+            onClick={handleExportClick}
+            disabled={isExporting}
+            aria-label={isExporting ? 'Exporting PDF' : 'Export as PDF'}
+            sx={{ px: 2, boxShadow: 'none' }}
           >
-            <FiDownload />
-          </Box>
-          <Box
-            component='span'
-            sx={{
-              display: { xs: 'none', sm: 'inline' },
-              marginLeft: '0.5rem',
-            }}
-          >
-            {isExporting ? 'Exporting...' : 'Export as PDF'}
-          </Box>
-        </Button>
+            {isExporting ? 'Exporting…' : 'Export PDF'}
+          </Button>
+        </Box>
       </Box>
 
       {editMode ? (
@@ -1381,7 +1464,7 @@ const ReviewInvoice = () => {
         >
           <Box sx={{ border: '1px solid #dfe3eb' }}>
             <TableHeader />
-            {tableRows.map((row) => (
+            {documentTableRows.map((row) => (
               <Box
                 key={`measure-row-${row.id}`}
                 ref={(node: HTMLDivElement | null) => {

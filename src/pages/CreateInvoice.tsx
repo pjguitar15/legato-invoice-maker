@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Box, Button, Typography } from '@mui/material'
-import { Link as RouterLink, Navigate, useNavigate, useParams } from 'react-router'
+import { Box, Button, InputAdornment, TextField, Typography } from '@mui/material'
+import { Link as RouterLink, Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
 import { FiArrowLeft } from 'react-icons/fi'
 import Fields from '../components/Form/components/fields/Fields'
 import ListChecker from '../components/Form/components/list-checker/ListChecker'
@@ -15,6 +15,17 @@ import { SECTION_IDS } from '../components/Form/components/list-checker/testData
 const CreateInvoice = () => {
   const { packageId } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const isAcknowledgementReceipt =
+    searchParams.get('documentType') === 'acknowledgement-receipt'
+  const acknowledgementService = searchParams.get('service')
+  const documentTypeQuery = isAcknowledgementReceipt
+    ? `?documentType=acknowledgement-receipt${
+        acknowledgementService
+          ? `&service=${encodeURIComponent(acknowledgementService)}`
+          : ''
+      }`
+    : ''
   const template = packageId ? getPackageTemplate(packageId) : undefined
   const isCustomPackage = packageId === CUSTOM_PACKAGE_ID
   const [showValidation, setShowValidation] = useState(false)
@@ -22,6 +33,7 @@ const CreateInvoice = () => {
     activePackageId,
     formValues,
     sections,
+    handleFieldChange,
     resetInvoiceBuilder,
     selectPackageTemplate,
   } = useInvoiceBuilder()
@@ -62,11 +74,11 @@ const CreateInvoice = () => {
       clientName: formValues.clientName.trim()
         ? undefined
         : 'Prepared For is required',
-      eventVenue: formValues.eventVenue.trim()
+      eventVenue: isAcknowledgementReceipt || formValues.eventVenue.trim()
         ? undefined
         : 'Event Venue is required',
       transpoFeePrice:
-        hasTranspoFee && !formValues.transpoFeePrice.trim()
+        !isAcknowledgementReceipt && hasTranspoFee && !formValues.transpoFeePrice.trim()
           ? 'Transpo Fee Price is required'
           : undefined,
     }
@@ -74,6 +86,7 @@ const CreateInvoice = () => {
     formValues.clientName,
     formValues.eventVenue,
     formValues.transpoFeePrice,
+    isAcknowledgementReceipt,
     sections,
   ])
 
@@ -81,9 +94,10 @@ const CreateInvoice = () => {
     validationErrors.clientName ||
       validationErrors.eventVenue ||
       validationErrors.transpoFeePrice ||
-      sections.some(
+      (isAcknowledgementReceipt && !formValues.packageOnePrice.trim()) ||
+      (!isAcknowledgementReceipt && sections.some(
         (section) => section.isCustom && !(section.customPrice ?? '').trim(),
-      ),
+      )),
   )
 
   const visibleValidationErrors = showValidation ? validationErrors : undefined
@@ -99,11 +113,13 @@ const CreateInvoice = () => {
 
       const firstInvalidFieldName = validationErrors.clientName
         ? 'clientName'
+        : isAcknowledgementReceipt && !formValues.packageOnePrice.trim()
+          ? 'packageOnePrice'
         : validationErrors.eventVenue
           ? 'eventVenue'
           : validationErrors.transpoFeePrice
             ? 'transpoFeePrice'
-            : sections.some(
+            : !isAcknowledgementReceipt && sections.some(
                   (section) => section.isCustom && !(section.customPrice ?? '').trim(),
                 )
               ? 'customSectionPrice'
@@ -126,7 +142,7 @@ const CreateInvoice = () => {
       return
     }
 
-    navigate(`/package/${packageId}/review`)
+    navigate(`/package/${packageId}/review${documentTypeQuery}`)
   }
 
   if (!packageId || (!template && !isCustomPackage)) {
@@ -156,7 +172,7 @@ const CreateInvoice = () => {
         >
           <Button
             component={RouterLink}
-            to='/invoice-templates'
+            to={`/invoice-templates${documentTypeQuery}`}
             variant='text'
             startIcon={<FiArrowLeft />}
             sx={{
@@ -177,51 +193,55 @@ const CreateInvoice = () => {
           </Button>
           <Box
             sx={{
-              border: '1px solid #263244',
-              borderRadius: '8px',
-              background: '#161b25',
-              padding: { xs: '1.1rem', sm: '1.35rem 1.5rem' },
-              boxShadow: '0 4px 24px rgba(0,0,0,0.32)',
+              border: '1px solid #253147',
+              borderRadius: '12px',
+              background: '#111827',
+              padding: { xs: '1.25rem', sm: '1.5rem 1.75rem' },
+              boxShadow: '0 14px 40px rgba(0,0,0,0.18)',
             }}
           >
             <Typography
               sx={{
                 fontSize: 11,
                 fontWeight: 800,
-                letterSpacing: '0.08em',
+                letterSpacing: '0.1em',
                 textTransform: 'uppercase',
-                color: '#8a9ab5',
+                color: '#93a4bf',
               }}
             >
-              Package Template
+              {isAcknowledgementReceipt ? 'Acknowledgement Receipt' : 'Package Template'}
             </Typography>
             <Typography
               component='h1'
               sx={{
-                fontSize: { xs: 28, sm: 34 },
+                fontSize: { xs: 27, sm: 32 },
                 lineHeight: 1.08,
                 fontWeight: 800,
                 color: '#e8edf5',
-                marginTop: '0.45rem',
+                marginTop: '0.55rem',
                 letterSpacing: 0,
               }}
             >
-              {template?.name ?? 'Custom Invoice'}
+              {isAcknowledgementReceipt
+                ? acknowledgementService || 'Acknowledgement Receipt'
+                : template?.name ?? 'Custom Invoice'}
             </Typography>
             <Typography
               sx={{
                 maxWidth: 620,
                 fontSize: 14.5,
                 lineHeight: 1.65,
-                color: '#8a9ab5',
-                marginTop: '0.65rem',
+                color: '#aab7ca',
+                marginTop: '0.75rem',
               }}
             >
-              {template
-                ? 'Start from the preset equipment list, then refine details before reviewing the invoice.'
-                : 'Build the invoice from scratch, then review the final document before exporting.'}
+              {isAcknowledgementReceipt
+                ? 'Enter who the receipt is prepared for and the total amount received.'
+                : template
+                  ? 'Start from the preset equipment list, then refine details before reviewing the invoice.'
+                  : 'Build the invoice from scratch, then review the final document before exporting.'}
             </Typography>
-            <Box
+            {!isAcknowledgementReceipt ? <Box
               sx={{
                 display: 'grid',
                 gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
@@ -270,12 +290,86 @@ const CreateInvoice = () => {
                   </Typography>
                 </Box>
               ))}
-            </Box>
+            </Box> : null}
           </Box>
         </Box>
 
-        <Fields errors={visibleValidationErrors} />
-        <ListChecker showValidation={showValidation} />
+        {isAcknowledgementReceipt ? (
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+              gap: 1.5,
+              marginTop: { xs: 1.5, sm: 2 },
+              padding: { xs: '1.25rem', sm: '1.5rem' },
+              border: '1px solid #253147',
+              borderRadius: '12px',
+              background: '#111827',
+              boxShadow: '0 14px 40px rgba(0,0,0,0.16)',
+              '& .MuiOutlinedInput-root': {
+                minHeight: 54,
+                background: '#0d1420',
+                color: '#e8edf5',
+                borderRadius: '9px',
+                '& fieldset': {
+                  borderColor: '#344158',
+                },
+                '&:hover fieldset': {
+                  borderColor: '#71819b',
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: '#2dd4bf',
+                  borderWidth: '1px',
+                },
+              },
+              '& .MuiInputLabel-root': {
+                color: '#aab7ca',
+                '&.Mui-focused': {
+                  color: '#2dd4bf',
+                },
+              },
+              '& .MuiInputAdornment-root': {
+                color: '#93a4bf',
+              },
+              '& .MuiFormHelperText-root': {
+                marginLeft: 0,
+              },
+            }}
+          >
+            <TextField
+              name='clientName'
+              label='Prepared for'
+              placeholder='Client or organization'
+              value={formValues.clientName}
+              onChange={handleFieldChange}
+              required
+              error={Boolean(visibleValidationErrors?.clientName)}
+              helperText={visibleValidationErrors?.clientName}
+            />
+            <TextField
+              name='packageOnePrice'
+              label='Total amount'
+              placeholder='0.00'
+              type='number'
+              value={formValues.packageOnePrice}
+              onChange={handleFieldChange}
+              required
+              error={showValidation && !formValues.packageOnePrice.trim()}
+              helperText={showValidation && !formValues.packageOnePrice.trim() ? 'Total is required' : undefined}
+              slotProps={{
+                htmlInput: { min: 0, step: '0.01' },
+                input: {
+                  startAdornment: <InputAdornment position='start'>₱</InputAdornment>,
+                },
+              }}
+            />
+          </Box>
+        ) : (
+          <>
+            <Fields errors={visibleValidationErrors} />
+            <ListChecker showValidation={showValidation} />
+          </>
+        )}
         <Box
           sx={{
             display: 'flex',
@@ -299,7 +393,7 @@ const CreateInvoice = () => {
         >
           <Button
             component={RouterLink}
-            to='/invoice-templates'
+            to={`/invoice-templates${documentTypeQuery}`}
             variant='outlined'
             fullWidth
             sx={{
@@ -307,8 +401,12 @@ const CreateInvoice = () => {
               color: '#c8d4e8',
               fontWeight: 800,
               textTransform: 'none',
-              borderRadius: '8px',
-              minHeight: 46,
+              borderRadius: '9px',
+              minHeight: 50,
+              '&:hover': {
+                borderColor: '#71819b',
+                background: '#111827',
+              },
             }}
           >
             Change template
@@ -322,8 +420,8 @@ const CreateInvoice = () => {
               color: '#080b12',
               fontWeight: 800,
               textTransform: 'none',
-              borderRadius: '8px',
-              minHeight: 46,
+              borderRadius: '9px',
+              minHeight: 50,
               boxShadow: 'none',
               '&:hover': {
                 background: '#5eead4',
@@ -331,7 +429,7 @@ const CreateInvoice = () => {
               },
             }}
           >
-            Review invoice
+            {isAcknowledgementReceipt ? 'Review receipt' : 'Review invoice'}
           </Button>
         </Box>
       </Box>

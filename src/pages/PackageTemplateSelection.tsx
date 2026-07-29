@@ -1,5 +1,5 @@
 import { Box, Button, Typography } from '@mui/material'
-import { Link as RouterLink, useNavigate } from 'react-router'
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router'
 import { FiArrowLeft } from 'react-icons/fi'
 import heroImage from '../assets/hero.png'
 import {
@@ -197,19 +197,37 @@ const TemplateCard = ({
 
 const PackageTemplateSelection = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const isAcknowledgementReceipt = searchParams.get('documentType') === 'acknowledgement-receipt'
+  const documentTypeQuery = isAcknowledgementReceipt
+    ? '?documentType=acknowledgement-receipt'
+    : ''
   const { resetInvoiceBuilder, selectPackageTemplate } = useInvoiceBuilder()
+  const acknowledgementTemplates = [
+    'Sounds and Lights',
+    'Sound System',
+    'LED Wall with Sounds and Lights',
+    'Church Consultation',
+  ] as const
 
   const handleChooseTemplate = (packageId: string) => {
     if (!selectPackageTemplate(packageId)) {
       return
     }
 
-    navigate(`/package/${packageId}`)
+    navigate(`/package/${packageId}${documentTypeQuery}`)
   }
 
   const handleStartWithoutTemplate = () => {
     resetInvoiceBuilder()
-    navigate(`/package/${CUSTOM_PACKAGE_ID}`)
+    navigate(`/package/${CUSTOM_PACKAGE_ID}${documentTypeQuery}`)
+  }
+
+  const handleChooseAcknowledgementTemplate = (service: string) => {
+    resetInvoiceBuilder()
+    navigate(
+      `/package/${CUSTOM_PACKAGE_ID}?documentType=acknowledgement-receipt&service=${encodeURIComponent(service)}`,
+    )
   }
 
   return (
@@ -245,32 +263,63 @@ const PackageTemplateSelection = () => {
               color: '#e8edf5',
             }}
           >
-            Select a template
+            {isAcknowledgementReceipt
+              ? 'Select a receipt type'
+              : 'Select a template'}
           </Typography>
-          <Typography
-            onClick={handleStartWithoutTemplate}
-            sx={{
-              fontSize: 14,
-              lineHeight: 1.4,
-              fontWeight: 700,
-              color: '#8a9ab5',
-              marginTop: '0.65rem',
-              display: 'inline-flex',
-              cursor: 'pointer',
-            }}
-          >
-            Create without template
-          </Typography>
+          {!isAcknowledgementReceipt ? (
+            <Typography
+              onClick={handleStartWithoutTemplate}
+              sx={{
+                fontSize: 14,
+                lineHeight: 1.4,
+                fontWeight: 700,
+                color: '#8a9ab5',
+                marginTop: '0.65rem',
+                display: 'inline-flex',
+                cursor: 'pointer',
+              }}
+            >
+              Create without template
+            </Typography>
+          ) : null}
         </Box>
 
         <Box sx={styles.grid}>
-          {packageTemplates.map((template) => (
-            <TemplateCard
-              key={template.id}
-              template={template}
-              onChoose={handleChooseTemplate}
-            />
-          ))}
+          {isAcknowledgementReceipt
+            ? acknowledgementTemplates.map((service) => (
+                <Button
+                  key={service}
+                  variant='outlined'
+                  onClick={() => handleChooseAcknowledgementTemplate(service)}
+                  sx={{
+                    minHeight: 112,
+                    justifyContent: 'flex-start',
+                    padding: '1.25rem',
+                    borderColor: '#263244',
+                    background: '#111827',
+                    color: '#e8edf5',
+                    borderRadius: '8px',
+                    fontSize: 17,
+                    fontWeight: 800,
+                    textAlign: 'left',
+                    textTransform: 'none',
+                    '&:hover': {
+                      borderColor: '#2dd4bf',
+                      background: '#151e2d',
+                    },
+                  }}
+                >
+                  {service}
+                </Button>
+              ))
+            : packageTemplates.map((template) => (
+                <TemplateCard
+                  key={template.id}
+                  template={template}
+                  onChoose={handleChooseTemplate}
+                />
+              ))}
         </Box>
       </Box>
     </Box>

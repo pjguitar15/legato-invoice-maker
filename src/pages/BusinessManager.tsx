@@ -1722,7 +1722,9 @@ const EventDialog = ({
         component='form'
         onSubmit={handleSubmit}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') event.preventDefault()
+          if (event.key === 'Enter' && !(event.target instanceof HTMLTextAreaElement)) {
+            event.preventDefault()
+          }
         }}
         sx={{
           '& .MuiOutlinedInput-root': {
@@ -3164,6 +3166,31 @@ const topLocations = useMemo(() => {
               }}
             >
               <Box component='span' sx={{ display: { xs: 'none', sm: 'inline' } }}>Invoice maker</Box>
+            </Button>
+            <Button
+              className='mobile-header-action'
+              aria-label='Open acknowledgement receipt maker'
+              component={RouterLink}
+              to='/invoice-templates?documentType=acknowledgement-receipt'
+              variant='outlined'
+              startIcon={<FiCheckSquare />}
+              sx={{
+                borderColor: 'var(--border)',
+                color: 'var(--text)',
+                background: 'var(--panel)',
+                borderRadius: '8px',
+                fontWeight: 620,
+                textTransform: 'none',
+                minHeight: { xs: 36, sm: 42 },
+                '&:hover': {
+                  borderColor: 'var(--accent)',
+                  background: 'var(--panelSoft)',
+                },
+              }}
+            >
+              <Box component='span' sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                Acknowledgement receipt
+              </Box>
             </Button>
             <Button
               className='mobile-header-action'
