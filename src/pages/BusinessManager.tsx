@@ -2199,6 +2199,8 @@ const BusinessManager = () => {
   const [eventsLoading, setEventsLoading] = useState(true)
   const [eventsError, setEventsError] = useState('')
   const [eventsTotal, setEventsTotal] = useState(0)
+  const [calendarEvents, setCalendarEvents] = useState<EventRecord[]>([])
+  const [calendarEventsLoading, setCalendarEventsLoading] = useState(false)
   const [eventsRevision, setEventsRevision] = useState(0)
   const [facetsRevision, setFacetsRevision] = useState(0)
   const [eventFacets, setEventFacets] = useState<EventFacets>({
@@ -2371,6 +2373,29 @@ const BusinessManager = () => {
 
     return () => controller.abort()
   }, [eventListParams, eventsRevision])
+
+  useEffect(() => {
+    if (viewMode !== 'calendar') return
+
+    const controller = new AbortController()
+    const calendarYear = selectedMonth.slice(0, 4)
+
+    setCalendarEventsLoading(true)
+    setEventsError('')
+
+    fetchAllEventsForYear(calendarYear, controller.signal)
+      .then(setCalendarEvents)
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setCalendarEvents([])
+        setEventsError(error instanceof Error ? error.message : 'Failed to load calendar events')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCalendarEventsLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [eventsRevision, selectedMonth, viewMode])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -2763,14 +2788,14 @@ const topLocations = useMemo(() => {
 
   const selectedMonthEvents = useMemo(
     () =>
-      events
+      calendarEvents
         .filter((event) => {
           const monthStart = `${selectedMonth}-01`
           const monthEnd = getDateKey(new Date(getMonthDate(selectedMonth).getFullYear(), getMonthDate(selectedMonth).getMonth() + 1, 0))
           return event.eventDate <= monthEnd && (event.eventEndDate || event.eventDate) >= monthStart
         })
         .sort((a, b) => (a.eventDate || '').localeCompare(b.eventDate || '')),
-    [events, selectedMonth],
+    [calendarEvents, selectedMonth],
   )
 
   const calendarDays = useMemo(() => {
@@ -4250,7 +4275,7 @@ const topLocations = useMemo(() => {
             <Box component={Card} sx={{ background: 'var(--panel)', borderRadius: '8px', padding: { xs: 2, md: 2.5 } }}>
               <Typography sx={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>This month</Typography>
               <Typography sx={{ fontSize: 13, color: 'var(--muted)', marginTop: '0.25rem' }}>
-                {selectedMonthEvents.length} events scheduled
+                {calendarEventsLoading ? 'Loading events…' : `${selectedMonthEvents.length} events scheduled`}
               </Typography>
               <Divider sx={{ margin: '1rem 0', borderColor: 'var(--borderSoft)' }} />
               <Stack spacing={1}>
