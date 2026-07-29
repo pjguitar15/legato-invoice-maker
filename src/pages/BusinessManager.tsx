@@ -993,13 +993,19 @@ const getDaysUntilEvent = (eventDate: string) => {
 }
 
 const countdownBadgeDetails = [
-  null,
+  { emoji: '🎬', background: 'linear-gradient(135deg, #0f766e, #134e4a)', border: '#5eead4', glow: 'rgba(45, 212, 191, 0.38)' },
   { emoji: '🚨', background: 'linear-gradient(135deg, #991b1b, #450a0a)', border: '#f87171', glow: 'rgba(248, 113, 113, 0.35)' },
   { emoji: '⚡', background: 'linear-gradient(135deg, #c2410c, #7c2d12)', border: '#fb923c', glow: 'rgba(251, 146, 60, 0.32)' },
   { emoji: '🎉', background: 'linear-gradient(135deg, #7e22ce, #3b0764)', border: '#c084fc', glow: 'rgba(192, 132, 252, 0.3)' },
   { emoji: '⏳', background: 'linear-gradient(135deg, #1d4ed8, #172554)', border: '#60a5fa', glow: 'rgba(96, 165, 250, 0.3)' },
   { emoji: '🗓️', background: 'linear-gradient(135deg, #047857, #022c22)', border: '#34d399', glow: 'rgba(52, 211, 153, 0.28)' },
 ] as const
+
+const getCountdownBadgeLabel = (daysUntilEvent: number) => {
+  if (daysUntilEvent === 0) return 'HAPPENING TODAY'
+  if (daysUntilEvent === 1) return 'TOMORROW'
+  return `${daysUntilEvent} days left`
+}
 
 const getBalance = (event: EventRecord) =>
   Math.max((event.agreedAmount ?? 0) - (event.amountPaid ?? 0), 0)
@@ -3876,7 +3882,7 @@ const topLocations = useMemo(() => {
                               ) : null}
                               {countdownBadge && daysUntilEvent != null ? (
                                 <Chip
-                                  label={`${countdownBadge.emoji} ${daysUntilEvent} ${daysUntilEvent === 1 ? 'day' : 'days'} left`}
+                                  label={`${countdownBadge.emoji} ${getCountdownBadgeLabel(daysUntilEvent)}`}
                                   size='small'
                                   sx={{
                                     flex: '0 0 auto',
