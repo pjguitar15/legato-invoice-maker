@@ -4214,6 +4214,7 @@ const topLocations = useMemo(() => {
                           {cell.events.slice(0, 3).map((event) => {
                             const eventHasPayment = hasPayment(event)
                             const eventIsConsultation = event.recordType === 'churchConsultation'
+                            const eventIsDone = isDone(event.status)
                             return (
                             <Box
                               key={event.id}
@@ -4244,11 +4245,13 @@ const topLocations = useMemo(() => {
                                 color: 'var(--text)',
                                 padding: '0.42rem 0.55rem',
                                 borderRadius: '6px',
+                                opacity: eventIsDone ? 0.28 : 1,
                                 cursor: 'pointer',
                                 outline: 'none',
-                                transition: 'transform 120ms ease, background 120ms ease',
+                                transition: 'transform 120ms ease, background 120ms ease, opacity 120ms ease',
                                 '&:hover, &:focus-visible': {
                                   transform: 'translateY(-1px)',
+                                  opacity: eventIsDone ? 0.55 : 1,
                                   background: isCancelled(event.status)
                                     ? 'color-mix(in srgb, #f43f5e 18%, var(--panel))'
                                     : eventHasPayment
@@ -4321,10 +4324,13 @@ const topLocations = useMemo(() => {
                     sx={{
                       borderBottom: '1px solid var(--borderSoft)',
                       paddingBottom: 1.25,
+                      opacity: isDone(event.status) ? 0.3 : 1,
                       cursor: 'pointer',
                       borderRadius: '8px',
                       outline: 'none',
+                      transition: 'opacity 120ms ease, background 120ms ease',
                       '&:hover, &:focus-visible': {
+                        opacity: isDone(event.status) ? 0.58 : 1,
                         background: 'var(--panelSoft)',
                       },
                     }}
