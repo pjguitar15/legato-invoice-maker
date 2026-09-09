@@ -2243,6 +2243,8 @@ const BusinessManager = () => {
   const [markingDoneId, setMarkingDoneId] = useState('')
   const [copiedEventId, setCopiedEventId] = useState('')
   const [confirmDoneEvent, setConfirmDoneEvent] = useState<EventRecord | null>(null)
+  const [lastDeletedEventId, setLastDeletedEventId] = useState('')
+  const [restoringEvent, setRestoringEvent] = useState(false)
   const [confirmDeleteEvent, setConfirmDeleteEvent] = useState<EventRecord | null>(null)
   const eventsTableRef = useDragScroll<HTMLDivElement>()
   const loadingMoreEventsRef = useRef(false)
@@ -2867,6 +2869,7 @@ const topLocations = useMemo(() => {
 
     try {
       await deleteEventFromApi(eventId)
+      setLastDeletedEventId(eventId)
       setConfirmDeleteEvent(null)
       setCalendarEventDetails((current) => (current?.id === eventId ? null : current))
       setPage(0)
@@ -2876,6 +2879,22 @@ const topLocations = useMemo(() => {
       setEventsError(error instanceof Error ? error.message : 'Failed to delete event')
     } finally {
       setDeletingEventId('')
+    }
+  }
+
+  const handleRestoreEvent = async () => {
+    setRestoringEvent(true)
+    setEventsError('')
+    try {
+      const response = await fetch(`/api/events/${encodeURIComponent(lastDeletedEventId)}/restore`, { method: 'POST' })
+      if (!response.ok) throw new Error('Failed to restore event')
+      setLastDeletedEventId('')
+      setEventsRevision((current) => current + 1)
+      setFacetsRevision((current) => current + 1)
+    } catch (error) {
+      setEventsError(error instanceof Error ? error.message : 'Failed to restore event')
+    } finally {
+      setRestoringEvent(false)
     }
   }
 
@@ -3224,6 +3243,14 @@ const topLocations = useMemo(() => {
           </Stack>
         </Box>
 
+        {lastDeletedEventId && (
+          <Box role='status' sx={{ mb: 2, color: theme.text }}>
+            Event deleted. Its details and expenses are preserved.
+            <Button onClick={() => void handleRestoreEvent()} disabled={restoringEvent}>
+              {restoringEvent ? 'Restoring…' : 'Undo delete'}
+            </Button>
+          </Box>
+        )}
         {eventsError ? (
           <Card sx={{ mb: 2, borderColor: '#f43f5e', background: 'color-mix(in srgb, #f43f5e 8%, var(--panel))' }}>
             <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
@@ -5428,9 +5455,9 @@ const topLocations = useMemo(() => {
           <DialogContent>
             <Typography sx={{ color: theme.muted, fontSize: 14 }}>
               {confirmDeleteEvent.recurringSeriesId ? (
-                <>This removes only <strong style={{ color: theme.text }}>{formatTableDate(confirmDeleteEvent.eventDate)}</strong>. The Feast remains scheduled on every other Sunday.</>
+                <>This removes only <strong style={{ color: theme.text }}>{formatTableDate(confirmDeleteEvent.eventDate)}</strong>. Its details and expenses are preserved for recovery. The Feast remains scheduled on every other Sunday.</>
               ) : (
-                <>This will permanently delete <strong style={{ color: theme.text }}>{confirmDeleteEvent.name || 'this event'}</strong> and its expense records. This action cannot be undone.</>
+                <>This will remove <strong style={{ color: theme.text }}>{confirmDeleteEvent.name || 'this event'}</strong> from active views. Its details and expense records will be preserved and can be restored.</>
               )}
             </Typography>
           </DialogContent>
