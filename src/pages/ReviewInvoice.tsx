@@ -939,39 +939,36 @@ const ReviewInvoice = () => {
 
   const grandTotal = subtotalBeforeOr + orFeeTotal
 
-  const generatedTableRows = useMemo(
-    () =>
-      buildTableRows({
-        formValues,
-        packageSections,
-        summaryRows,
-        grandTotal,
-      }),
-    [formValues, grandTotal, packageSections, summaryRows],
-  )
-  const [tableRows, setTableRows] = useState<TableRow[]>(generatedTableRows)
+  const generatedTableRows = useMemo<TableRow[]>(() => {
+    if (documentType === 'Acknowledgement Receipt') {
+      const total = `P${formatCurrency(String(grandTotal))}`
+
+      return [
+        {
+          id: 'acknowledgement-service',
+          kind: 'summary',
+          no: '01',
+          description: acknowledgementService,
+          total,
+        },
+        {
+          id: 'grand-total',
+          kind: 'grand-total',
+          total: `TOTAL: ${total}`,
+        },
+      ]
+    }
+
+    return buildTableRows({
+      formValues,
+      packageSections,
+      summaryRows,
+      grandTotal,
+    })
+  }, [acknowledgementService, documentType, formValues, grandTotal, packageSections, summaryRows])
+  // Preview and PDF export must read the same editable rows, including receipts.
+  const [documentTableRows, setTableRows] = useState<TableRow[]>(generatedTableRows)
   const documentDirtyRef = useRef(false)
-  const documentTableRows = useMemo<TableRow[]>(() => {
-    if (documentType !== 'Acknowledgement Receipt') return tableRows
-
-    const total = tableRows.find((row) => row.kind === 'grand-total')?.total
-      .replace(/^TOTAL:\s*/i, '') ?? `P${formatCurrency(String(grandTotal))}`
-
-    return [
-      {
-        id: 'acknowledgement-service',
-        kind: 'summary',
-        no: '01',
-        description: acknowledgementService,
-        total,
-      },
-      {
-        id: 'grand-total',
-        kind: 'grand-total',
-        total: `TOTAL: ${total}`,
-      },
-    ]
-  }, [acknowledgementService, documentType, grandTotal, tableRows])
 
   useEffect(() => {
     if (documentDirtyRef.current) return
