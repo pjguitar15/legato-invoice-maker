@@ -1,24 +1,26 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 
-const AUTH_KEY = 'legato-auth'
-
 export default function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const navigate = useNavigate()
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    const validUser = import.meta.env.VITE_AUTH_USERNAME
-    const validPass = import.meta.env.VITE_AUTH_PASSWORD
-
-    if (username === validUser && password === validPass) {
-      localStorage.setItem(AUTH_KEY, 'true')
+    setError('')
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Sign in failed.')
       navigate('/')
-    } else {
-      setError('Invalid username or password.')
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not reach the server.')
     }
   }
 

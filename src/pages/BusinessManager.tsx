@@ -2898,9 +2898,12 @@ const topLocations = useMemo(() => {
     }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('legato-auth')
-    navigate('/login')
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+    } finally {
+      navigate('/login')
+    }
   }
 
   const handleMarkDone = async (event: EventRecord) => {

@@ -162,7 +162,7 @@ const CreateInvoice = () => {
           width: '100%',
           maxWidth: 760,
           margin: 'auto',
-          padding: { xs: '1rem 0 6.75rem', sm: '1.5rem 1rem 2rem' },
+          padding: { xs: '1rem 0 13rem', sm: '1.5rem 1rem 2rem' },
         }}
       >
         <Box
