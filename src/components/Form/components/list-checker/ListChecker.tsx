@@ -172,7 +172,7 @@ const ListChecker = ({ showValidation = false }: { showValidation?: boolean }) =
                       size='small'
                       sx={{
                         position: 'absolute',
-                        right: 8,
+                        right: 44,
                         top: '50%',
                         transform: 'translateY(-50%)',
                         color: '#f87171',

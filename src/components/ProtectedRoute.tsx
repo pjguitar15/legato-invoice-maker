@@ -1,19 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Navigate } from 'react-router'
 
+const AUTH_KEY = 'legato-auth'
+
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
-  const [authenticated, setAuthenticated] = useState<boolean | null>(null)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    fetch('/api/auth/session', { signal: controller.signal })
-      .then((response) => setAuthenticated(response.ok))
-      .catch(() => {
-        if (!controller.signal.aborted) setAuthenticated(false)
-      })
-    return () => controller.abort()
-  }, [])
-
-  if (authenticated === null) return null
-  return authenticated ? <>{children}</> : <Navigate to='/login' replace />
+  const isLoggedIn = localStorage.getItem(AUTH_KEY) === 'true'
+  return isLoggedIn ? <>{children}</> : <Navigate to='/login' replace />
 }
